@@ -1,0 +1,24 @@
+# Claude Code
+.claude/
+.mcp.json
+
+# Root-level markdown files
+/*.md
+
+# Docs folder
+docs/
+
+# Next.js
+project/.next/
+project/node_modules/
+project/.env.local
+project/.env*.local
+project/next-env.d.ts
+project/tsconfig.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Misc
+*.pdf
+test-data/
