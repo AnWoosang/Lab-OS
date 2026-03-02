@@ -1,3 +1,5 @@
+export const dynamic = 'force-static'
+
 import Link from 'next/link'
 import { ArrowLeft, FlaskConical, GraduationCap, LayoutDashboard, FileText, Receipt, Link2, RefreshCw, Filter, CreditCard } from 'lucide-react'
 
