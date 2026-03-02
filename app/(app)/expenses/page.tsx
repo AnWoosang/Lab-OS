@@ -180,7 +180,7 @@ export default async function ExpensesPage({
                     <td className="px-5 py-4">
                       {expense.receiptUrl ? (
                         <a
-                          href={expense.receiptUrl}
+                          href={`/api/file?path=${encodeURIComponent(expense.receiptUrl)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-1 text-primary text-xs hover:text-orange-400 transition-colors"

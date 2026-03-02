@@ -174,7 +174,7 @@ export default async function ReportsPage({
                     <td className="px-5 py-4">
                       {report.fileUrl ? (
                         <a
-                          href={report.fileUrl}
+                          href={`/api/file?path=${encodeURIComponent(report.fileUrl)}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-1 text-primary text-xs hover:text-orange-400 transition-colors"
