@@ -7,6 +7,19 @@ import type { ExpenseWithProject, ProjectRow } from './db'
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
+// ─── Retry wrapper ────────────────────────────────────────────────────────────
+
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  for (let i = 0; i <= maxRetries; i++) {
+    try { return await fn() }
+    catch (err) {
+      if (i === maxRetries) throw err
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)))
+    }
+  }
+  throw new Error('unreachable')
+}
+
 // ─── File type detection ──────────────────────────────────────────────────────
 
 export async function detectFileType(
@@ -28,7 +41,7 @@ export async function detectFileType(
     },
   }
 
-  const result = await model.generateContent([prompt, imagePart])
+  const result = await withRetry(() => model.generateContent([prompt, imagePart]))
   const text = result.response.text().trim().toLowerCase()
   console.log('[gemini] detectFileType raw response:', text)
 
@@ -52,10 +65,10 @@ export async function parseReport(
     },
   }
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     REPORT_PARSER_SYSTEM_PROMPT,
     imagePart,
-  ])
+  ]))
   const text = result.response.text().trim()
   console.log('[gemini] parseReport raw response (첫 200자):', text.slice(0, 200))
 
@@ -103,10 +116,10 @@ export async function parseExpense(
     },
   }
 
-  const result = await model.generateContent([
+  const result = await withRetry(() => model.generateContent([
     EXPENSE_PARSER_SYSTEM_PROMPT,
     imagePart,
-  ])
+  ]))
   const text = result.response.text().trim()
   console.log('[gemini] parseExpense raw response (첫 200자):', text.slice(0, 200))
 

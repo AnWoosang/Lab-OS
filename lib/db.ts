@@ -3,6 +3,7 @@
  * All functions use the service-role client (bypasses RLS).
  */
 
+import { cache } from 'react'
 import { createServerClient } from './supabase'
 import type { UserProfile } from './supabase'
 import type { ReportData, ExpenseData } from './schemas'
@@ -22,6 +23,7 @@ export interface ProjectRow {
   startDate: string | null
   endDate: string | null
   cardLast4: string | null
+  isCompleted: boolean
 }
 
 export interface ReportRow {
@@ -29,6 +31,7 @@ export interface ReportRow {
   projectId: string
   reportDate: string | null
   content: string | null
+  bottleneck: string | null
   progress: number | null
   fileUrl: string | null
   createdAt: string
@@ -61,7 +64,7 @@ export interface UploadSessionRow {
 
 // ─── Projects ─────────────────────────────────────────────────────────────────
 
-export async function getAllProjects(workspaceId: string): Promise<ProjectRow[]> {
+export const getAllProjects = cache(async (workspaceId: string): Promise<ProjectRow[]> => {
   const supabase = createServerClient()
   const { data, error } = await supabase
     .from('projects')
@@ -75,7 +78,7 @@ export async function getAllProjects(workspaceId: string): Promise<ProjectRow[]>
   }
 
   return (data ?? []).map(mapProjectRow)
-}
+})
 
 export async function getProjectById(
   projectId: string,
@@ -151,7 +154,22 @@ function mapProjectRow(row: Record<string, unknown>): ProjectRow {
     startDate: (row.start_date as string | null) ?? null,
     endDate: (row.end_date as string | null) ?? null,
     cardLast4: (row.card_last4 as string | null) ?? null,
+    isCompleted: (row.is_completed as boolean) ?? false,
   }
+}
+
+export async function findProjectByCode(
+  workspaceId: string,
+  projectCode: string
+): Promise<string | null> {
+  const supabase = createServerClient()
+  const { data } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('project_code', projectCode)
+    .single()
+  return data?.id ?? null
 }
 
 export async function findProjectByCardLast4(
@@ -211,6 +229,7 @@ export async function createReport(
       project_id: projectId,
       report_date: data.report_date ?? null,
       content: data.summary,
+      bottleneck: data.bottleneck ?? null,
       progress: data.progress,
       file_url: fileUrl,
       upload_session_id: sessionId ?? null,
@@ -249,6 +268,7 @@ export async function getReportsForProject(
     projectId: row.project_id,
     reportDate: row.report_date,
     content: row.content,
+    bottleneck: (row.bottleneck as string | null) ?? null,
     progress: row.progress,
     fileUrl: row.file_url,
     createdAt: row.created_at,
@@ -480,6 +500,7 @@ export async function getAllReports(
     projectId: row.project_id,
     reportDate: row.report_date,
     content: row.content,
+    bottleneck: (row.bottleneck as string | null) ?? null,
     progress: row.progress,
     fileUrl: row.file_url,
     createdAt: row.created_at,
@@ -597,6 +618,44 @@ export async function updateUploadSession(
   if (update.errorMsg !== undefined) payload.error_msg = update.errorMsg
 
   await supabase.from('upload_sessions').update(payload).eq('id', sessionId)
+}
+
+export async function deleteProject(projectId: string, workspaceId: string): Promise<void> {
+  const supabase = createServerClient()
+  const { error } = await supabase
+    .from('projects')
+    .delete()
+    .eq('id', projectId)
+    .eq('workspace_id', workspaceId)
+  if (error) throw error
+}
+
+export async function updateProjectMeta(
+  projectId: string,
+  workspaceId: string,
+  data: { projectCode: string; projectName: string | null }
+): Promise<void> {
+  const supabase = createServerClient()
+  const { error } = await supabase
+    .from('projects')
+    .update({ project_code: data.projectCode.toUpperCase(), project_name: data.projectName })
+    .eq('id', projectId)
+    .eq('workspace_id', workspaceId)
+  if (error) throw error
+}
+
+export async function setProjectCompleted(
+  projectId: string,
+  workspaceId: string,
+  isCompleted: boolean
+): Promise<void> {
+  const supabase = createServerClient()
+  const { error } = await supabase
+    .from('projects')
+    .update({ is_completed: isCompleted })
+    .eq('id', projectId)
+    .eq('workspace_id', workspaceId)
+  if (error) throw error
 }
 
 export async function getUploadSessionsForUser(

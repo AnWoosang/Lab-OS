@@ -1,3 +1,4 @@
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@supabase/supabase-js'
 import { createBrowserClient as createSSRBrowserClient } from '@supabase/ssr'
 
@@ -61,20 +62,22 @@ export async function getWorkspaceByJoinCode(
   return { id: data.id, labName: data.lab_name, joinCode: data.join_code }
 }
 
-export async function getWorkspaceById(
-  id: string
-): Promise<WorkspaceConfig | null> {
-  const supabase = createServerClient()
-  const { data, error } = await supabase
-    .from('workspaces')
-    .select('*')
-    .eq('id', id)
-    .single()
+export const getWorkspaceById = unstable_cache(
+  async (id: string): Promise<WorkspaceConfig | null> => {
+    const supabase = createServerClient()
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('*')
+      .eq('id', id)
+      .single()
 
-  if (error || !data) return null
+    if (error || !data) return null
 
-  return { id: data.id, labName: data.lab_name, joinCode: data.join_code }
-}
+    return { id: data.id, labName: data.lab_name, joinCode: data.join_code }
+  },
+  ['workspace'],
+  { tags: ['workspace'], revalidate: 300 }
+)
 
 // ─── User profile ─────────────────────────────────────────────────────────────
 
@@ -237,6 +240,15 @@ export async function uploadFile(
 
   console.log('[storage] ✓ 업로드 성공, path:', data?.path ?? path)
   return data?.path ?? path
+}
+
+export async function createSignedUploadUrl(
+  storagePath: string
+): Promise<{ signedUrl: string; token: string; path: string }> {
+  const supabase = createServerClient()
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(storagePath)
+  if (error || !data) throw new Error(`Failed to create signed upload URL: ${error?.message}`)
+  return { signedUrl: data.signedUrl, token: data.token, path: data.path }
 }
 
 // ─── Storage: delete file ─────────────────────────────────────────────────────

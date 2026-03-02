@@ -7,17 +7,17 @@ import ProjectCreateForm from './ProjectCreateForm'
 import StudentApprovalList from './StudentApprovalList'
 import StudentAssignmentList from './StudentAssignmentList'
 import InviteCard from '../dashboard/InviteCard'
-import CardLast4Form from '../projects/[id]/CardLast4Form'
+import ProjectManageRow from './ProjectManageRow'
 
 export const dynamic = 'force-dynamic'
 
 interface Props {
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; status?: string }>
 }
 
 export default async function LabPage({ searchParams }: Props) {
   const { workspaceId } = await getWorkspaceContext()
-  const { tab } = await searchParams
+  const { tab, status } = await searchParams
   const currentTab = ['projects', 'approval', 'assignment', 'invite'].includes(tab ?? '')
     ? (tab as string)
     : 'projects'
@@ -29,6 +29,11 @@ export default async function LabPage({ searchParams }: Props) {
     getApprovedStudents(workspaceId),
     getProjectMembersWithUserIds(workspaceId),
   ])
+
+  const statusFilter = status === 'completed' ? 'completed' : 'active'
+  const activeProjects = projects.filter((p) => !p.isCompleted)
+  const completedProjects = projects.filter((p) => p.isCompleted)
+  const filteredProjects = statusFilter === 'completed' ? completedProjects : activeProjects
 
   return (
     <div className="p-6 space-y-6">
@@ -54,10 +59,40 @@ export default async function LabPage({ searchParams }: Props) {
               <h2 className="text-white font-semibold mb-4">프로젝트 관리</h2>
               <ProjectCreateForm />
 
-              {projects.length === 0 ? (
+              {/* 상태 필터 Pills */}
+              <div className="flex gap-2 mb-4">
+                <Link
+                  href="/lab?tab=projects&status=active"
+                  className={[
+                    'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
+                    statusFilter === 'active'
+                      ? 'bg-primary/20 text-primary border border-primary/30'
+                      : 'text-white/40 hover:text-white/70 border border-white/10',
+                  ].join(' ')}
+                >
+                  진행중 ({activeProjects.length})
+                </Link>
+                <Link
+                  href="/lab?tab=projects&status=completed"
+                  className={[
+                    'px-3 py-1.5 rounded-full text-sm font-medium transition-colors',
+                    statusFilter === 'completed'
+                      ? 'bg-white/10 text-white border border-white/20'
+                      : 'text-white/40 hover:text-white/70 border border-white/10',
+                  ].join(' ')}
+                >
+                  완료 ({completedProjects.length})
+                </Link>
+              </div>
+
+              {filteredProjects.length === 0 ? (
                 <div className="bg-deep-navy-light rounded-xl border border-white/10 p-10 text-center">
-                  <p className="text-white/40 text-sm">아직 프로젝트가 없습니다.</p>
-                  <p className="text-white/25 text-xs mt-1">위 폼에서 과제코드를 입력해 생성하세요.</p>
+                  <p className="text-white/40 text-sm">
+                    {statusFilter === 'completed' ? '완료된 프로젝트가 없습니다.' : '아직 프로젝트가 없습니다.'}
+                  </p>
+                  {statusFilter === 'active' && (
+                    <p className="text-white/25 text-xs mt-1">위 폼에서 과제코드를 입력해 생성하세요.</p>
+                  )}
                 </div>
               ) : (
                 <div className="bg-deep-navy-light rounded-xl border border-white/10 overflow-hidden">
@@ -69,49 +104,17 @@ export default async function LabPage({ searchParams }: Props) {
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">프로젝트명</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">법인카드</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">상태</th>
-                          <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">상세</th>
+                          <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">작업</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {projects.map((project) => {
-                          const statusConfig = {
-                            red_zone: { label: 'Red Zone', className: 'bg-red-500/20 text-red-400 border-red-500/30' },
-                            warning: { label: 'Warning', className: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-                            on_track: { label: 'On Track', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-                          }
-                          const sc = statusConfig[project.status as keyof typeof statusConfig] ?? statusConfig.on_track
-
-                          return (
-                            <tr key={project.id} className="border-b border-white/5 hover:bg-white/3 transition-colors">
-                              <td className="px-5 py-3">
-                                <span className="text-white/80 font-mono text-sm">{project.projectCode}</span>
-                              </td>
-                              <td className="px-5 py-3">
-                                <span className="text-white text-sm">{project.projectName || '—'}</span>
-                              </td>
-                              <td className="px-5 py-3">
-                                <CardLast4Form
-                                  projectId={project.id}
-                                  workspaceId={workspaceId}
-                                  currentCardLast4={project.cardLast4}
-                                />
-                              </td>
-                              <td className="px-5 py-3">
-                                <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${sc.className}`}>
-                                  {sc.label}
-                                </span>
-                              </td>
-                              <td className="px-5 py-3">
-                                <Link
-                                  href={`/projects/${project.id}`}
-                                  className="text-primary text-xs hover:text-orange-400 transition-colors"
-                                >
-                                  상세 →
-                                </Link>
-                              </td>
-                            </tr>
-                          )
-                        })}
+                        {filteredProjects.map((project) => (
+                          <ProjectManageRow
+                            key={project.id}
+                            project={project}
+                            workspaceId={workspaceId}
+                          />
+                        ))}
                       </tbody>
                     </table>
                   </div>

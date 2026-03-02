@@ -9,7 +9,7 @@ export interface MessageItem {
   fileName?: string
   fileSize?: number
   // result fields
-  status?: 'processing' | 'done' | 'error'
+  status?: 'uploading' | 'processing' | 'done' | 'error'
   resultType?: 'report' | 'expense' | 'unknown'
   message?: string
   errorMsg?: string
@@ -53,6 +53,19 @@ export default function MessageBubble({ msg }: { msg: MessageItem }) {
   }
 
   // Result bubble (system side)
+  if (msg.status === 'uploading') {
+    return (
+      <div className="flex justify-start mb-3">
+        <div className="bg-white/5 border border-white/10 rounded-2xl rounded-tl-sm px-4 py-3 max-w-sm">
+          <div className="flex items-center gap-2.5">
+            <Loader2 className="w-4 h-4 text-blue-400 animate-spin flex-shrink-0" />
+            <span className="text-white/60 text-sm">업로드 중...</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (msg.status === 'processing') {
     return (
       <div className="flex justify-start mb-3">

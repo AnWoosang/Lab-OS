@@ -1,22 +1,8 @@
 'use server'
 
+import { revalidateTag } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/auth'
 import { regenerateJoinCode } from '@/lib/supabase'
-import { summarizeProjectRow } from '@/lib/gemini'
-import { getWorkspaceContext } from '@/lib/workspace-context'
-
-export async function generateDashboardProjectRowSummaryAction(project: {
-  projectCode: string
-  projectName: string | null
-  status: string
-  bottleneck: string | null
-  riskScore: number | null
-  budgetTotal: number | null
-  budgetUsed: number | null
-}): Promise<string> {
-  await getWorkspaceContext() // auth check
-  return summarizeProjectRow(project)
-}
 
 export async function regenerateJoinCodeAction(): Promise<{ ok: boolean; joinCode?: string; error?: string }> {
   const { profile } = await getCurrentUserWithProfile()
@@ -27,6 +13,7 @@ export async function regenerateJoinCodeAction(): Promise<{ ok: boolean; joinCod
 
   try {
     const joinCode = await regenerateJoinCode(profile.workspaceId)
+    revalidateTag('workspace')
     return { ok: true, joinCode }
   } catch (err) {
     console.error('[dashboard:regenerateJoinCode]', err)

@@ -1,12 +1,11 @@
 'use client'
 
-import { useState, useTransition, useRef, useEffect } from 'react'
-import { uploadFileAction, type UploadResult } from '../actions'
+import { useState, useRef, useEffect } from 'react'
+import { getUploadUrlAction, processUploadAction, type UploadResult } from '../actions'
 import MessageBubble, { type MessageItem } from './MessageBubble'
 import SessionSidebar from './SessionSidebar'
 import FileUploadInput from './FileUploadInput'
-import type { ProjectRow } from '@/lib/db'
-import type { UploadSessionRow } from '@/lib/db'
+import type { ProjectRow, UploadSessionRow } from '@/lib/db'
 
 interface Props {
   workspaceId: string
@@ -24,86 +23,110 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
     myProjects.length === 1 ? myProjects[0].id : ''
   )
-  const [uploadKey] = useState(0)
-  const [isPending, startTransition] = useTransition()
+  const [activeCount, setActiveCount] = useState(0)
   const [fullAreaDrag, setFullAreaDrag] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const dragCounterRef = useRef(0)
 
-  // Auto-scroll to bottom on new messages
+  const isPending = activeCount > 0
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const handleUpload = (file: File) => {
-    const tempId = Date.now().toString()
+  const updateMsg = (id: string, patch: Partial<MessageItem>) =>
+    setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)))
 
-    // Optimistic: add file bubble + processing bubble
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `file-${tempId}`,
-        type: 'file_upload',
-        fileName: file.name,
-        fileSize: file.size,
-        createdAt: new Date(),
-      },
-      {
-        id: `result-${tempId}`,
-        type: 'result',
-        status: 'processing',
-        createdAt: new Date(),
-      },
-    ])
+  const handleUploads = async (files: File[]) => {
+    if (!selectedProjectId) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `warn-${Date.now()}`,
+          type: 'result',
+          status: 'error',
+          errorMsg: '업로드하기 전에 프로젝트를 선택해주세요.',
+          createdAt: new Date(),
+        },
+      ])
+      return
+    }
 
-    startTransition(async () => {
-      const formData = new FormData()
-      formData.append('file', file)
-      if (selectedProjectId) formData.append('projectId', selectedProjectId)
-
-      let result: UploadResult
-      try {
-        result = await uploadFileAction(null, formData)
-      } catch {
-        result = { ok: false, error: '업로드 중 오류가 발생했습니다.' }
-      }
-
-      // Update result bubble
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === `result-${tempId}`
-            ? {
-                ...m,
-                status: result.ok ? 'done' : 'error',
-                resultType: result.type,
-                message: result.message,
-                errorMsg: result.error,
-              }
-            : m
-        )
-      )
-
-      // Update sessions list with new session (optimistic — will refresh on next load)
-      if (result.sessionId) {
-        const optimisticSession: UploadSessionRow = {
-          id: result.sessionId,
-          userId: '',
-          workspaceId: '',
-          projectId: selectedProjectId || null,
-          fileName: file.name,
-          fileUrl: null,
-          resultType: result.ok ? (result.type ?? null) : null,
-          resultData: null,
-          status: result.ok ? 'done' : 'error',
-          errorMsg: result.error ?? null,
-          createdAt: new Date().toISOString(),
-        }
-        setSessions((prev) => [optimisticSession, ...prev])
-      }
+    // 각 파일에 optimistic 버블 추가
+    const tempIds = files.map((_, i) => `${Date.now()}-${i}`)
+    const newMessages: MessageItem[] = []
+    files.forEach((file, i) => {
+      newMessages.push({ id: `file-${tempIds[i]}`, type: 'file_upload', fileName: file.name, fileSize: file.size, createdAt: new Date() })
+      newMessages.push({ id: `result-${tempIds[i]}`, type: 'result', status: 'uploading', createdAt: new Date() })
     })
+    setMessages((prev) => [...prev, ...newMessages])
+    setActiveCount((c) => c + files.length)
+
+    await Promise.allSettled(
+      files.map(async (file, i) => {
+        const resultId = `result-${tempIds[i]}`
+        try {
+          // ── Step 1: Presigned URL 발급 ─────────────────────────────────────
+          const urlResult = await getUploadUrlAction(file.name, file.type)
+          if (!urlResult.ok || !urlResult.signedUrl || !urlResult.storagePath) {
+            updateMsg(resultId, { status: 'error', errorMsg: urlResult.error ?? '업로드 준비 실패' })
+            return
+          }
+
+          // ── Step 2: Supabase에 직접 PUT 업로드 (Vercel 통과 없음) ──────────
+          const uploadRes = await fetch(urlResult.signedUrl, {
+            method: 'PUT',
+            body: file,
+            headers: { 'Content-Type': file.type },
+          })
+          if (!uploadRes.ok) {
+            updateMsg(resultId, { status: 'error', errorMsg: '파일 업로드 실패. 다시 시도해주세요.' })
+            return
+          }
+
+          // ── Step 3: 서버에서 Gemini OCR + DB 저장 ─────────────────────────
+          updateMsg(resultId, { status: 'processing' })
+          let result: UploadResult
+          try {
+            result = await processUploadAction(urlResult.storagePath, file.name, file.type, selectedProjectId)
+          } catch {
+            result = { ok: false, error: '처리 중 오류가 발생했습니다.' }
+          }
+
+          updateMsg(resultId, {
+            status: result.ok ? 'done' : 'error',
+            resultType: result.type,
+            message: result.message,
+            errorMsg: result.error,
+          })
+
+          if (result.sessionId) {
+            setSessions((prev) => [
+              {
+                id: result.sessionId!,
+                userId: '', workspaceId: '',
+                projectId: selectedProjectId,
+                fileName: file.name, fileUrl: null,
+                resultType: result.ok ? (result.type ?? null) : null,
+                resultData: null,
+                status: result.ok ? 'done' : 'error',
+                errorMsg: result.error ?? null,
+                createdAt: new Date().toISOString(),
+              },
+              ...prev,
+            ])
+          }
+        } catch (err) {
+          updateMsg(resultId, { status: 'error', errorMsg: '예기치 못한 오류가 발생했습니다.' })
+          console.error('[UploadClient] 파일 처리 오류:', err)
+        } finally {
+          setActiveCount((c) => c - 1)
+        }
+      })
+    )
   }
 
-  // 전체 영역 드래그앤드롭 핸들러 (자식 요소 이동 시 flicker 방지용 카운터)
+  // 전체 영역 드래그앤드롭
   const onDragEnter = (e: React.DragEvent) => {
     e.preventDefault()
     dragCounterRef.current += 1
@@ -118,16 +141,16 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
     e.preventDefault()
     dragCounterRef.current = 0
     setFullAreaDrag(false)
-    const file = e.dataTransfer.files[0]
-    if (file && ALLOWED_TYPES.includes(file.type)) handleUpload(file)
+    const files = Array.from(e.dataTransfer.files)
+      .filter((f) => ALLOWED_TYPES.includes(f.type))
+      .slice(0, 5)
+    if (files.length > 0) handleUploads(files)
   }
 
   return (
     <div className="flex h-full" style={{ height: 'calc(100vh - 0px)' }}>
-      {/* Sessions sidebar */}
       <SessionSidebar sessions={sessions} />
 
-      {/* Main chat area */}
       <div
         className="flex-1 flex flex-col min-w-0 relative"
         onDragEnter={onDragEnter}
@@ -135,23 +158,26 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
         onDragOver={onDragOver}
         onDrop={onDrop}
       >
-        {/* 전체 영역 드래그 오버레이 */}
         {fullAreaDrag && (
           <div className="absolute inset-0 z-20 bg-primary/10 border-2 border-dashed border-primary/60 rounded-none flex flex-col items-center justify-center pointer-events-none">
             <span className="text-5xl mb-3">📎</span>
             <p className="text-primary text-lg font-semibold">파일을 여기에 놓으세요</p>
-            <p className="text-primary/60 text-sm mt-1">JPG · PNG · PDF · 최대 20MB</p>
+            <p className="text-primary/60 text-sm mt-1">JPG · PNG · PDF · 최대 15MB · 최대 5개</p>
           </div>
         )}
-        {/* Project selector */}
+
+        {/* 프로젝트 선택 */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-white/10 bg-deep-navy-light flex-shrink-0">
           <span className="text-white/60 text-sm font-medium">프로젝트:</span>
           <select
             value={selectedProjectId}
             onChange={(e) => setSelectedProjectId(e.target.value)}
-            className="bg-deep-navy border border-white/10 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-primary/50 transition-colors"
+            className={[
+              'bg-deep-navy border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary/50 transition-colors',
+              !selectedProjectId ? 'border-amber-500/50 text-amber-400/70' : 'border-white/10 text-white',
+            ].join(' ')}
           >
-            <option value="">선택 (자동 감지)</option>
+            <option value="" disabled>프로젝트를 선택하세요</option>
             {displayProjects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.projectCode}{p.projectName ? ` · ${p.projectName}` : ''}
@@ -160,16 +186,16 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
           </select>
         </div>
 
-        {/* Messages */}
+        {/* 메시지 영역 */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
               <div className="w-16 h-16 bg-primary/10 rounded-2xl flex items-center justify-center mb-4">
                 <span className="text-3xl">📎</span>
               </div>
-              <h3 className="text-white font-semibold text-lg mb-2">파일 업로드</h3>
+              <h3 className="text-white font-semibold text-lg mb-2">AI 업로드</h3>
               <p className="text-white/40 text-sm max-w-sm leading-relaxed">
-                주간 보고서(PDF/이미지) 또는 영수증을 업로드하면 AI가 자동으로 분석하여 등록합니다.
+                주간 보고서 또는 영수증을 업로드하면 AI가 자동으로 분석하여 등록합니다.
               </p>
               <div className="grid grid-cols-2 gap-3 mt-6 w-full max-w-sm">
                 <div className="bg-deep-navy-light rounded-xl p-4 border border-white/10 text-left">
@@ -196,10 +222,8 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
           )}
         </div>
 
-        {/* File upload input */}
         <FileUploadInput
-          key={uploadKey}
-          onUpload={handleUpload}
+          onUpload={handleUploads}
           isPending={isPending}
         />
       </div>

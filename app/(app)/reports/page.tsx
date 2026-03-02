@@ -12,8 +12,6 @@ import ProjectFilterTabs from '../components/ProjectFilterTabs'
 import PeriodFilterBar from '../components/PeriodFilterBar'
 import ExpandableText from '../components/ExpandableText'
 import SortableDateHeader from '../components/SortableDateHeader'
-import AISummaryCell from '../components/AISummaryCell'
-import { generateReportRowSummaryAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -126,8 +124,8 @@ export default async function ReportsPage({
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">프로젝트</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">진도율</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">위험도</th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">병목 요약</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">AI 요약</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">병목</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">파일</th>
                 </tr>
               </thead>
@@ -160,16 +158,11 @@ export default async function ReportsPage({
                         : <span className="text-white/30 text-sm">—</span>
                       }
                     </td>
-                    <td className="px-5 py-4">
-                      <AISummaryCell
-                        generateAction={generateReportRowSummaryAction.bind(null, {
-                          projectCode: report.projectCode,
-                          projectName: report.projectName,
-                          content: report.content,
-                          progress: report.progress,
-                          reportDate: report.reportDate,
-                        })}
-                      />
+                    <td className="px-5 py-4 max-w-[180px]">
+                      {report.bottleneck
+                        ? <ExpandableText text={report.bottleneck} maxLines={2} />
+                        : <span className="text-white/30 text-sm">—</span>
+                      }
                     </td>
                     <td className="px-5 py-4">
                       {report.fileUrl ? (

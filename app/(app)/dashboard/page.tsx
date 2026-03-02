@@ -6,8 +6,6 @@ import { getAllProjects, type ProjectRow } from '@/lib/db'
 import InviteCard from './InviteCard'
 import PendingStudents from './PendingStudents'
 import ExpandableText from '../components/ExpandableText'
-import AISummaryCell from '../components/AISummaryCell'
-import { generateDashboardProjectRowSummaryAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,8 +50,7 @@ function ProjectTableSkeleton() {
 
 // ─── Stats Cards ──────────────────────────────────────────────────────────────
 
-async function StatsCards({ workspaceId }: { workspaceId: string }) {
-  const projects = await getAllProjects(workspaceId)
+async function StatsCards({ projects }: { projects: ProjectRow[] }) {
 
   const total = projects.length
   const redZone = projects.filter((p) => p.status === 'red_zone').length
@@ -126,8 +123,7 @@ function BudgetBar({ used, total }: { used: number | null; total: number | null 
   )
 }
 
-async function ProjectTable({ workspaceId }: { workspaceId: string }) {
-  const projects = await getAllProjects(workspaceId)
+function ProjectTable({ projects }: { projects: ProjectRow[] }) {
   const order = { red_zone: 0, warning: 1, on_track: 2 }
   const sorted = [...projects].sort(
     (a, b) =>
@@ -150,7 +146,6 @@ async function ProjectTable({ workspaceId }: { workspaceId: string }) {
               <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">프로젝트명</th>
               <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">상태</th>
               <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">병목</th>
-              <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">AI 요약</th>
               <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">예산</th>
               <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">담당자</th>
             </tr>
@@ -158,7 +153,7 @@ async function ProjectTable({ workspaceId }: { workspaceId: string }) {
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center text-white/30 text-sm">
+                <td colSpan={5} className="px-5 py-10 text-center text-white/30 text-sm">
                   아직 프로젝트가 없습니다.
                 </td>
               </tr>
@@ -189,19 +184,6 @@ async function ProjectTable({ workspaceId }: { workspaceId: string }) {
                     }
                   </td>
                   <td className="px-5 py-4">
-                    <AISummaryCell
-                      generateAction={generateDashboardProjectRowSummaryAction.bind(null, {
-                        projectCode: project.projectCode,
-                        projectName: project.projectName,
-                        status: project.status,
-                        bottleneck: project.bottleneck,
-                        riskScore: project.riskScore,
-                        budgetTotal: project.budgetTotal,
-                        budgetUsed: project.budgetUsed,
-                      })}
-                    />
-                  </td>
-                  <td className="px-5 py-4">
                     <BudgetBar used={project.budgetUsed} total={project.budgetTotal} />
                   </td>
                   <td className="px-5 py-4">
@@ -221,9 +203,10 @@ async function ProjectTable({ workspaceId }: { workspaceId: string }) {
 
 export default async function DashboardPage() {
   const { workspaceId } = await getWorkspaceContext()
-  const [workspace, pendingStudents] = await Promise.all([
+  const [workspace, pendingStudents, projects] = await Promise.all([
     getWorkspaceById(workspaceId),
     getPendingStudents(workspaceId),
+    getAllProjects(workspaceId),
   ])
 
   return (
@@ -239,13 +222,8 @@ export default async function DashboardPage() {
       {/* Invite Link Card */}
       {workspace && <InviteCard workspace={workspace} />}
 
-      <Suspense fallback={<StatsCardsSkeleton />}>
-        <StatsCards workspaceId={workspaceId} />
-      </Suspense>
-
-      <Suspense fallback={<ProjectTableSkeleton />}>
-        <ProjectTable workspaceId={workspaceId} />
-      </Suspense>
+      <StatsCards projects={projects} />
+      <ProjectTable projects={projects} />
     </div>
   )
 }
