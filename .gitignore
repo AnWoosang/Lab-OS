@@ -9,12 +9,12 @@
 docs/
 
 # Next.js
-project/.next/
-project/node_modules/
-project/.env.local
-project/.env*.local
-project/next-env.d.ts
-project/tsconfig.tsbuildinfo
+.next/
+node_modules/
+.env.local
+.env*.local
+next-env.d.ts
+tsconfig.tsbuildinfo
 
 # OS
 .DS_Store
