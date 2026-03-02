@@ -22,3 +22,4 @@ tsconfig.tsbuildinfo
 # Misc
 *.pdf
 test-data/
+.vercel
