@@ -55,9 +55,13 @@ export async function middleware(request: NextRequest) {
   // ── Authenticated: check role cookie ──────────────────────────────────────
   const role = request.cookies.get('lab_role')?.value
 
-  // No profile yet → send to onboarding (skip if already there)
-  if (!role && pathname !== '/onboarding') {
-    return NextResponse.redirect(new URL('/onboarding', request.url))
+  // No role cookie → let /api/refresh-role and /onboarding through; send everything else to /api/refresh-role
+  // (refresh-role reads DB, sets cookie, and redirects to the right page — avoids /onboarding↔/pending loop)
+  if (!role) {
+    if (pathname !== '/onboarding' && pathname !== '/api/refresh-role') {
+      return NextResponse.redirect(new URL('/api/refresh-role', request.url))
+    }
+    return NextResponse.next()
   }
 
   // Pending students can only access /pending and /api/refresh-role
