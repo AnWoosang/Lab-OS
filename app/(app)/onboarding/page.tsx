@@ -1,7 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useActionState, useState } from 'react'
 import {
   FlaskConical,
   GraduationCap,
@@ -12,14 +11,12 @@ import {
 } from 'lucide-react'
 import {
   professorOnboardAction,
-  studentOnboardAction,
   type OnboardingState,
 } from './actions'
 
 const initialState: OnboardingState = { ok: null, error: null }
 
 export default function OnboardingPage() {
-  const router = useRouter()
   const [selectedRole, setSelectedRole] = useState<'professor' | 'student' | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -27,17 +24,6 @@ export default function OnboardingPage() {
     professorOnboardAction,
     initialState
   )
-  const [stuState, stuAction, isStuPending] = useActionState(
-    studentOnboardAction,
-    initialState
-  )
-
-  // Redirect after success
-  useEffect(() => {
-    if (stuState.ok && stuState.role === 'student') {
-      router.push('/upload')
-    }
-  }, [stuState, router])
 
   const appUrl =
     typeof window !== 'undefined'
@@ -132,7 +118,7 @@ export default function OnboardingPage() {
               </div>
               <p className="text-white font-semibold mb-1">학생</p>
               <p className="text-white/40 text-xs leading-relaxed">
-                교수님께 받은 초대 링크나 코드로 연구실에 참여합니다
+                교수님께 받은 초대 링크로 연구실에 참여합니다
               </p>
             </button>
           </div>
@@ -203,7 +189,7 @@ export default function OnboardingPage() {
     )
   }
 
-  // ── Student form ────────────────────────────────────────────────────────────
+  // ── Student info ────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-deep-navy flex items-center justify-center p-6">
       <div className="bg-deep-navy-light rounded-2xl border border-white/10 p-10 max-w-md w-full">
@@ -219,47 +205,28 @@ export default function OnboardingPage() {
           </div>
           <div>
             <h1 className="text-white font-bold text-xl">연구실 참여</h1>
-            <p className="text-white/40 text-sm">교수님께 받은 코드를 입력하세요</p>
+            <p className="text-white/40 text-sm">초대 링크로만 참여할 수 있습니다</p>
           </div>
         </div>
 
-        <form action={stuAction} className="space-y-4">
-          <div>
-            <label className="block text-white/60 text-sm mb-1.5">참여 코드</label>
-            <input
-              type="text"
-              name="joinCode"
-              placeholder="예: ABC123"
-              maxLength={6}
-              className="w-full bg-deep-navy border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 text-sm font-mono uppercase tracking-widest focus:outline-none focus:border-primary/50 transition-colors"
-              required
-            />
+        <div className="bg-deep-navy rounded-xl border border-white/10 p-5 space-y-4">
+          <div className="flex gap-3">
+            <span className="w-6 h-6 bg-primary/20 text-primary text-xs font-bold rounded flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+            <p className="text-white/70 text-sm">교수님에게 초대 링크를 받으세요<br /><span className="text-white/40 text-xs">(카카오톡, 이메일, Slack 등)</span></p>
           </div>
+          <div className="flex gap-3">
+            <span className="w-6 h-6 bg-primary/20 text-primary text-xs font-bold rounded flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+            <p className="text-white/70 text-sm">링크를 클릭하면 자동으로 연구실에 참여됩니다</p>
+          </div>
+          <div className="flex gap-3">
+            <span className="w-6 h-6 bg-primary/20 text-primary text-xs font-bold rounded flex items-center justify-center flex-shrink-0 mt-0.5">3</span>
+            <p className="text-white/70 text-sm">교수님 승인 후 업로드 기능을 사용할 수 있습니다</p>
+          </div>
+        </div>
 
-          {stuState.error && (
-            <p className="text-red-400 text-sm bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-              {stuState.error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={isStuPending}
-            className="w-full bg-primary text-white font-semibold py-3 rounded-xl hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            {isStuPending ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>참여 중...</span>
-              </>
-            ) : (
-              <>
-                <span>참여하기</span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
-        </form>
+        <p className="text-white/30 text-xs text-center mt-5">
+          초대 링크가 없다면 교수님에게 문의해주세요
+        </p>
       </div>
     </div>
   )
