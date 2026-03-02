@@ -7,7 +7,7 @@ import { FlaskConical } from 'lucide-react'
 
 function LoginForm() {
   const searchParams = useSearchParams()
-  const redirectPath = searchParams.get('redirect') || ''
+  const redirectPath = searchParams?.get('redirect') || ''
 
   const [isLoading, setIsLoading] = useState<'google' | 'slack' | null>(null)
   const [error, setError] = useState<string | null>(null)
