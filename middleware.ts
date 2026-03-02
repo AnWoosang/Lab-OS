@@ -60,9 +60,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/onboarding', request.url))
   }
 
-  // Pending students can only access /pending
+  // Pending students can only access /pending and /api/refresh-role
   if (role === 'pending') {
-    if (!pathname.startsWith('/pending')) {
+    if (!pathname.startsWith('/pending') && pathname !== '/api/refresh-role') {
       return NextResponse.redirect(new URL('/pending', request.url))
     }
     return NextResponse.next()
@@ -74,6 +74,13 @@ export async function middleware(request: NextRequest) {
     PROFESSOR_ONLY_ROUTES.some((r) => pathname.startsWith(r))
   ) {
     return NextResponse.redirect(new URL('/upload', request.url))
+  }
+
+  // Users with an existing role can't access /onboarding
+  if (pathname.startsWith('/onboarding')) {
+    if (role === 'student') return NextResponse.redirect(new URL('/upload', request.url))
+    if (role === 'pending') return NextResponse.redirect(new URL('/pending', request.url))
+    if (role === 'professor') return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   return supabaseResponse

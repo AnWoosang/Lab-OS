@@ -38,17 +38,24 @@ export async function professorOnboardAction(
   const userId = await getAuthUserId()
   if (!userId) return { ok: false, error: '로그인이 필요합니다.' }
 
-  // If already has a profile, just set cookie
+  // Block users who already have a profile
   const existing = await getUserProfile(userId)
-  if (existing?.role === 'professor') {
-    const cookieStore = await cookies()
-    cookieStore.set('lab_role', 'professor', {
-      httpOnly: true,
-      path: '/',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30,
-    })
-    return { ok: true, error: null, joinCode: undefined, role: 'professor' }
+  if (existing) {
+    if (existing.role === 'professor') {
+      const cookieStore = await cookies()
+      cookieStore.set('lab_role', 'professor', {
+        httpOnly: true,
+        path: '/',
+        sameSite: 'lax',
+        maxAge: 60 * 60 * 24 * 30,
+      })
+      return { ok: true, error: null, joinCode: undefined, role: 'professor' }
+    }
+    // Student trying to escalate to professor — block
+    return {
+      ok: false,
+      error: '이미 학생으로 등록된 계정입니다. 교수님 계정이 필요하다면 새 계정을 사용하세요.',
+    }
   }
 
   try {

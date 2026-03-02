@@ -26,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const role = cookieStore.get('lab_role')?.value as 'professor' | 'student' | undefined
 
   const visibleItems = NAV_ITEMS.filter(
-    (item) => !role || (item.roles as readonly string[]).includes(role)
+    (item) => role && (item.roles as readonly string[]).includes(role)
   )
 
   return (

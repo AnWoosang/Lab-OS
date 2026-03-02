@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation'
-import { cookies } from 'next/headers'
 import { Clock } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/auth'
 
@@ -10,16 +9,9 @@ export default async function PendingPage() {
 
   if (!authUser) redirect('/login')
 
-  // If approved, update cookie and redirect to upload
+  // If approved, refresh role cookie via Route Handler and redirect
   if (profile?.status === 'approved') {
-    const cookieStore = await cookies()
-    cookieStore.set('lab_role', 'student', {
-      httpOnly: true,
-      path: '/',
-      sameSite: 'lax',
-      maxAge: 60 * 60 * 24 * 30,
-    })
-    redirect('/upload')
+    redirect('/api/refresh-role')
   }
 
   return (
