@@ -22,6 +22,7 @@ export default function PeriodFilterBar({ currentPeriod, basePath, currentProjec
     const params = new URLSearchParams()
     if (period !== 'all') params.set('period', period)
     if (currentProjectId) params.set('project', currentProjectId)
+    // period 선택 시 from/to 파라미터 제거 (DateRangePicker와 충돌 방지)
     const qs = params.toString()
     return qs ? `${basePath}?${qs}` : basePath
   }

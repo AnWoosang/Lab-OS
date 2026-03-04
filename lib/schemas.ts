@@ -14,6 +14,7 @@ export const ReportSchema = z.object({
   bottleneck: z.string().nullable(),
   next_plan: z.string().nullable(),
   risk_score: z.enum(['red', 'yellow', 'green']),
+  ai_analysis: z.string().nullable(),
   error_code: z.enum(['OUT_OF_SCOPE', 'UNREADABLE_FILE']).nullable(),
 })
 
@@ -37,6 +38,7 @@ export const ExpenseSchema = z.object({
   card_last4: z.string().regex(/^\d{4}$/).nullable(),
   is_suspicious: z.boolean(),
   suspicious_reason: z.string().nullable(),
+  budget_category: z.string().nullable().optional(),
   error_code: z.enum(['OUT_OF_SCOPE', 'UNREADABLE_FILE']).nullable(),
 })
 

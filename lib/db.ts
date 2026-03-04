@@ -32,8 +32,11 @@ export interface ReportRow {
   reportDate: string | null
   content: string | null
   bottleneck: string | null
+  nextPlan: string | null
+  aiAnalysis: string | null
   progress: number | null
   fileUrl: string | null
+  studentName: string | null
   createdAt: string
 }
 
@@ -43,9 +46,24 @@ export interface ExpenseRow {
   amount: number
   vendor: string | null
   category: string | null
+  budgetCategory: string | null
   isSuspicious: boolean
   receiptUrl: string | null
   createdAt: string
+}
+
+export interface ProjectBudgetRow {
+  id: string
+  projectId: string
+  category: string
+  allocatedAmount: number
+}
+
+export interface BudgetSummaryItem {
+  category: string
+  allocatedAmount: number
+  usedAmount: number
+  remaining: number
 }
 
 export interface UploadSessionRow {
@@ -230,8 +248,11 @@ export async function createReport(
       report_date: data.report_date ?? null,
       content: data.summary,
       bottleneck: data.bottleneck ?? null,
+      next_plan: data.next_plan ?? null,
+      ai_analysis: data.ai_analysis ?? null,
       progress: data.progress,
       file_url: fileUrl,
+      student_name: data.student_name ?? null,
       upload_session_id: sessionId ?? null,
     })
     .select('id')
@@ -269,8 +290,11 @@ export async function getReportsForProject(
     reportDate: row.report_date,
     content: row.content,
     bottleneck: (row.bottleneck as string | null) ?? null,
+    nextPlan: (row.next_plan as string | null) ?? null,
+    aiAnalysis: (row.ai_analysis as string | null) ?? null,
     progress: row.progress,
     fileUrl: row.file_url,
+    studentName: (row.student_name as string | null) ?? null,
     createdAt: row.created_at,
   }))
 }
@@ -281,7 +305,8 @@ export async function createExpense(
   workspaceId: string,
   projectId: string,
   data: ExpenseData,
-  fileUrl: string
+  fileUrl: string,
+  budgetCategory?: string | null
 ): Promise<string> {
   const supabase = createServerClient()
 
@@ -296,6 +321,7 @@ export async function createExpense(
       category: data.category,
       budget_code: data.budget_code,
       is_suspicious: data.is_suspicious,
+      budget_category: budgetCategory ?? null,
     })
     .select('id')
     .single()
@@ -324,9 +350,88 @@ export async function getExpensesForProject(
     amount: row.amount,
     vendor: row.vendor,
     category: row.category,
+    budgetCategory: (row.budget_category as string | null) ?? null,
     isSuspicious: row.is_suspicious,
     receiptUrl: row.receipt_url,
     createdAt: row.created_at,
+  }))
+}
+
+// ─── Project Budgets ──────────────────────────────────────────────────────────
+
+export async function getProjectBudgets(
+  projectId: string,
+  workspaceId: string
+): Promise<ProjectBudgetRow[]> {
+  const supabase = createServerClient()
+  const { data, error } = await supabase
+    .from('project_budgets')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('workspace_id', workspaceId)
+    .order('created_at', { ascending: true })
+
+  if (error) return []
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    projectId: row.project_id,
+    category: row.category,
+    allocatedAmount: row.allocated_amount,
+  }))
+}
+
+export async function setProjectBudgets(
+  projectId: string,
+  workspaceId: string,
+  items: { category: string; allocatedAmount: number }[]
+): Promise<void> {
+  const supabase = createServerClient()
+  await supabase.from('project_budgets').delete().eq('project_id', projectId).eq('workspace_id', workspaceId)
+
+  if (items.length === 0) return
+
+  const { error } = await supabase.from('project_budgets').insert(
+    items.map((item) => ({
+      workspace_id: workspaceId,
+      project_id: projectId,
+      category: item.category,
+      allocated_amount: item.allocatedAmount,
+    }))
+  )
+  if (error) throw new Error(`Failed to set project budgets: ${error.message}`)
+}
+
+export async function getBudgetSummary(
+  projectId: string,
+  workspaceId: string
+): Promise<BudgetSummaryItem[]> {
+  const supabase = createServerClient()
+
+  const [budgets, expenses] = await Promise.all([
+    getProjectBudgets(projectId, workspaceId),
+    supabase
+      .from('expenses')
+      .select('budget_category, amount')
+      .eq('project_id', projectId)
+      .eq('workspace_id', workspaceId)
+      .not('budget_category', 'is', null),
+  ])
+
+  if (budgets.length === 0) return []
+
+  // Aggregate used amounts by category
+  const usedMap: Record<string, number> = {}
+  for (const row of expenses.data ?? []) {
+    const cat = row.budget_category as string
+    usedMap[cat] = (usedMap[cat] ?? 0) + (row.amount as number)
+  }
+
+  return budgets.map((b) => ({
+    category: b.category,
+    allocatedAmount: b.allocatedAmount,
+    usedAmount: usedMap[b.category] ?? 0,
+    remaining: b.allocatedAmount - (usedMap[b.category] ?? 0),
   }))
 }
 
@@ -454,6 +559,53 @@ export async function removeProjectMember(
     .eq('workspace_id', workspaceId)
 }
 
+// ─── Project Leads ─────────────────────────────────────────────────────────────
+
+export async function getAllProjectLeads(
+  workspaceId: string
+): Promise<Record<string, UserProfile[]>> {
+  const supabase = createServerClient()
+  const { data, error } = await supabase
+    .from('project_leads')
+    .select('project_id, user_id, users(id, name, email, role, workspace_id, status)')
+    .eq('workspace_id', workspaceId)
+
+  if (error || !data) return {}
+
+  const result: Record<string, UserProfile[]> = {}
+  for (const row of data) {
+    const user = (row.users as unknown) as { id: string; name: string; email: string; role: string; workspace_id: string; status: string } | null
+    if (!user) continue
+    const profile: UserProfile = {
+      id: user.id,
+      workspaceId: user.workspace_id,
+      role: user.role as UserProfile['role'],
+      name: user.name,
+      email: user.email,
+      status: user.status as UserProfile['status'],
+    }
+    const pid = row.project_id as string
+    if (!result[pid]) result[pid] = []
+    result[pid].push(profile)
+  }
+  return result
+}
+
+export async function setProjectLeads(
+  projectId: string,
+  workspaceId: string,
+  userIds: string[]
+): Promise<void> {
+  const supabase = createServerClient()
+  await supabase.from('project_leads').delete().eq('project_id', projectId).eq('workspace_id', workspaceId)
+  if (userIds.length > 0) {
+    const { error } = await supabase.from('project_leads').insert(
+      userIds.map((uid) => ({ project_id: projectId, workspace_id: workspaceId, user_id: uid }))
+    )
+    if (error) throw new Error(`Failed to set project leads: ${error.message}`)
+  }
+}
+
 // ─── Reports: workspace-wide ──────────────────────────────────────────────────
 
 export interface ReportWithProject extends ReportRow {
@@ -501,8 +653,11 @@ export async function getAllReports(
     reportDate: row.report_date,
     content: row.content,
     bottleneck: (row.bottleneck as string | null) ?? null,
+    nextPlan: (row.next_plan as string | null) ?? null,
+    aiAnalysis: (row.ai_analysis as string | null) ?? null,
     progress: row.progress,
     fileUrl: row.file_url,
+    studentName: (row.student_name as string | null) ?? null,
     createdAt: row.created_at,
     projectCode: (row.projects as { project_code: string; project_name: string | null } | null)?.project_code ?? '—',
     projectName: (row.projects as { project_code: string; project_name: string | null } | null)?.project_name ?? null,
@@ -538,6 +693,7 @@ export async function getAllExpenses(
     amount: row.amount,
     vendor: row.vendor,
     category: row.category,
+    budgetCategory: (row.budget_category as string | null) ?? null,
     isSuspicious: row.is_suspicious,
     receiptUrl: row.receipt_url,
     createdAt: row.created_at,
@@ -620,6 +776,26 @@ export async function updateUploadSession(
   await supabase.from('upload_sessions').update(payload).eq('id', sessionId)
 }
 
+export async function deleteReport(id: string, workspaceId: string): Promise<void> {
+  const supabase = createServerClient()
+  const { error } = await supabase
+    .from('reports')
+    .delete()
+    .eq('id', id)
+    .eq('workspace_id', workspaceId)
+  if (error) throw error
+}
+
+export async function deleteExpense(id: string, workspaceId: string): Promise<void> {
+  const supabase = createServerClient()
+  const { error } = await supabase
+    .from('expenses')
+    .delete()
+    .eq('id', id)
+    .eq('workspace_id', workspaceId)
+  if (error) throw error
+}
+
 export async function deleteProject(projectId: string, workspaceId: string): Promise<void> {
   const supabase = createServerClient()
   const { error } = await supabase
@@ -633,13 +809,43 @@ export async function deleteProject(projectId: string, workspaceId: string): Pro
 export async function updateProjectMeta(
   projectId: string,
   workspaceId: string,
-  data: { projectCode: string; projectName: string | null }
+  data: {
+    projectCode: string
+    projectName: string | null
+    leadStudent?: string | null
+    startDate?: string | null
+    endDate?: string | null
+    cardLast4?: string | null
+  }
+): Promise<void> {
+  const supabase = createServerClient()
+  const update: Record<string, unknown> = {
+    project_code: data.projectCode.toUpperCase(),
+    project_name: data.projectName,
+  }
+  if ('leadStudent' in data) update.lead_student = data.leadStudent ?? null
+  if ('startDate' in data) update.start_date = data.startDate ?? null
+  if ('endDate' in data) update.end_date = data.endDate ?? null
+  if ('cardLast4' in data) update.card_last4 = data.cardLast4 ?? null
+
+  const { error } = await supabase
+    .from('projects')
+    .update(update)
+    .eq('id', projectId)
+    .eq('workspace_id', workspaceId)
+  if (error) throw error
+}
+
+export async function updateExpenseBudgetCategory(
+  expenseId: string,
+  workspaceId: string,
+  budgetCategory: string | null
 ): Promise<void> {
   const supabase = createServerClient()
   const { error } = await supabase
-    .from('projects')
-    .update({ project_code: data.projectCode.toUpperCase(), project_name: data.projectName })
-    .eq('id', projectId)
+    .from('expenses')
+    .update({ budget_category: budgetCategory })
+    .eq('id', expenseId)
     .eq('workspace_id', workspaceId)
   if (error) throw error
 }

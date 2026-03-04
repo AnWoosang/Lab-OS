@@ -10,7 +10,7 @@ function LoginForm() {
   const redirectPath = searchParams?.get('redirect') || ''
 
   const [isLoading, setIsLoading] = useState<'google' | 'slack_oidc' | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(searchParams?.get('error') ?? null)
 
   const handleOAuthLogin = async (provider: 'google' | 'slack_oidc') => {
     setIsLoading(provider)

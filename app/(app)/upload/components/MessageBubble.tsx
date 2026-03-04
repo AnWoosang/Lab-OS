@@ -1,6 +1,6 @@
 'use client'
 
-import { FileText, Image, Loader2, CheckCircle2, AlertTriangle, Receipt } from 'lucide-react'
+import { FileText, Image, Loader2, CheckCircle2, AlertTriangle, Receipt, Tag } from 'lucide-react'
 
 export interface MessageItem {
   id: string
@@ -13,6 +13,8 @@ export interface MessageItem {
   resultType?: 'report' | 'expense' | 'unknown'
   message?: string
   errorMsg?: string
+  budgetCategory?: string | null
+  budgetCategoryAutoAssigned?: boolean
   createdAt: Date
 }
 
@@ -129,6 +131,30 @@ export default function MessageBubble({ msg }: { msg: MessageItem }) {
               <p className="text-white/60 text-xs mt-1 leading-relaxed">
                 {msg.errorMsg || '보고서나 영수증 파일을 올려주세요.'}
               </p>
+            )}
+            {isExpense && msg.budgetCategory && (
+              <div className={`flex items-center gap-1.5 mt-2 px-2.5 py-1.5 rounded-lg w-fit ${
+                msg.budgetCategoryAutoAssigned
+                  ? 'bg-amber-500/10 border border-amber-500/20'
+                  : 'bg-green-500/10 border border-green-500/20'
+              }`}>
+                {msg.budgetCategoryAutoAssigned ? (
+                  <AlertTriangle className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                ) : (
+                  <Tag className="w-3 h-3 text-green-400 flex-shrink-0" />
+                )}
+                <span className={`text-xs font-medium ${
+                  msg.budgetCategoryAutoAssigned ? 'text-amber-400' : 'text-green-400'
+                }`}>
+                  {msg.budgetCategory}
+                </span>
+                {msg.budgetCategoryAutoAssigned && (
+                  <span className="text-white/30 text-xs">· AI 자동 분류 · 영수증 탭에서 수정 가능</span>
+                )}
+              </div>
+            )}
+            {isExpense && !msg.budgetCategory && (
+              <p className="text-white/30 text-xs mt-1">예산 항목 미분류</p>
             )}
           </div>
         </div>

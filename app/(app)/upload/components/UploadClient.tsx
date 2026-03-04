@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { getUploadUrlAction, processUploadAction, type UploadResult } from '../actions'
+import { getProjectBudgetsAction } from '@/app/(app)/lab/actions'
 import MessageBubble, { type MessageItem } from './MessageBubble'
 import SessionSidebar from './SessionSidebar'
 import FileUploadInput from './FileUploadInput'
-import type { ProjectRow, UploadSessionRow } from '@/lib/db'
+import type { ProjectRow, UploadSessionRow, ProjectBudgetRow } from '@/lib/db'
 
 interface Props {
   workspaceId: string
@@ -23,6 +24,8 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
   const [selectedProjectId, setSelectedProjectId] = useState<string>(
     myProjects.length === 1 ? myProjects[0].id : ''
   )
+  const [budgetCategories, setBudgetCategories] = useState<ProjectBudgetRow[]>([])
+  const [selectedBudgetCategory, setSelectedBudgetCategory] = useState<string>('')
   const [activeCount, setActiveCount] = useState(0)
   const [fullAreaDrag, setFullAreaDrag] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
@@ -33,6 +36,17 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  const handleProjectChange = async (projectId: string) => {
+    setSelectedProjectId(projectId)
+    setSelectedBudgetCategory('')
+    if (projectId) {
+      const budgets = await getProjectBudgetsAction(projectId)
+      setBudgetCategories(budgets)
+    } else {
+      setBudgetCategories([])
+    }
+  }
 
   const updateMsg = (id: string, patch: Partial<MessageItem>) =>
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...patch } : m)))
@@ -88,7 +102,7 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
           updateMsg(resultId, { status: 'processing' })
           let result: UploadResult
           try {
-            result = await processUploadAction(urlResult.storagePath, file.name, file.type, selectedProjectId)
+            result = await processUploadAction(urlResult.storagePath, file.name, file.type, selectedProjectId, selectedBudgetCategory || null)
           } catch {
             result = { ok: false, error: '처리 중 오류가 발생했습니다.' }
           }
@@ -98,6 +112,8 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
             resultType: result.type,
             message: result.message,
             errorMsg: result.error,
+            budgetCategory: result.budgetCategory,
+            budgetCategoryAutoAssigned: result.budgetCategoryAutoAssigned,
           })
 
           if (result.sessionId) {
@@ -167,11 +183,11 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
         )}
 
         {/* 프로젝트 선택 */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-white/10 bg-deep-navy-light flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3 px-6 py-4 border-b border-white/10 bg-deep-navy-light flex-shrink-0">
           <span className="text-white/60 text-sm font-medium">프로젝트:</span>
           <select
             value={selectedProjectId}
-            onChange={(e) => setSelectedProjectId(e.target.value)}
+            onChange={(e) => handleProjectChange(e.target.value)}
             className={[
               'bg-deep-navy border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-primary/50 transition-colors',
               !selectedProjectId ? 'border-amber-500/50 text-amber-400/70' : 'border-white/10 text-white',
@@ -184,6 +200,23 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
               </option>
             ))}
           </select>
+          {budgetCategories.length > 0 && (
+            <>
+              <span className="text-white/30 text-sm">예산:</span>
+              <select
+                value={selectedBudgetCategory}
+                onChange={(e) => setSelectedBudgetCategory(e.target.value)}
+                className="bg-deep-navy border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-primary/50 transition-colors"
+              >
+                <option value="">선택 안함 (AI 자동)</option>
+                {budgetCategories.map((b) => (
+                  <option key={b.category} value={b.category}>
+                    {b.category} (배정: {b.allocatedAmount.toLocaleString()}원)
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
         </div>
 
         {/* 메시지 영역 */}

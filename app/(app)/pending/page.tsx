@@ -2,8 +2,6 @@ import { redirect } from 'next/navigation'
 import { Clock } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/auth'
 
-export const dynamic = 'force-dynamic'
-
 export default async function PendingPage() {
   const { authUser, profile } = await getCurrentUserWithProfile()
 

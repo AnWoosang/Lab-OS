@@ -41,9 +41,15 @@ export async function middleware(request: NextRequest) {
   )
 
   // Validate session (re-refreshes token if needed)
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user: { id: string } | null = null
+  try {
+    const { data } = await supabase.auth.getUser()
+    user = data.user
+  } catch {
+    const errorResponse = NextResponse.redirect(new URL('/login', request.url))
+    errorResponse.cookies.delete('lab_role')
+    return errorResponse
+  }
 
   // ── Not authenticated ──────────────────────────────────────────────────────
   if (!user) {

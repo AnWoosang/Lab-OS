@@ -1,38 +1,45 @@
+import Link from 'next/link'
 import { Receipt, AlertTriangle, ExternalLink } from 'lucide-react'
+import { BarTrack } from '../components/BarTrack'
 import { getWorkspaceContext } from '@/lib/workspace-context'
 import {
   getAllProjects,
   getAllExpenses,
   getExpensesForProject,
+  getBudgetSummary,
   type ExpenseRow,
   type ExpenseWithProject,
 } from '@/lib/db'
 import { periodToDateRange } from '@/lib/date-filter'
 import ProjectFilterTabs from '../components/ProjectFilterTabs'
 import PeriodFilterBar from '../components/PeriodFilterBar'
+import DateRangePicker from '../components/DateRangePicker'
 import AISummaryCard from '../components/AISummaryCard'
 import AISummaryCell from '../components/AISummaryCell'
 import SortableDateHeader from '../components/SortableDateHeader'
-import { generateExpenseSummaryAction, generateExpenseRowSummaryAction } from './actions'
-
-export const dynamic = 'force-dynamic'
+import BudgetCategoryCell from './BudgetCategoryCell'
+import DeleteRowButton from '../components/DeleteRowButton'
+import { generateExpenseSummaryAction, generateExpenseRowSummaryAction, deleteExpenseAction } from './actions'
 
 export default async function ExpensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; period?: string; order?: string }>
+  searchParams: Promise<{ project?: string; period?: string; order?: string; from?: string; to?: string }>
 }) {
-  const { workspaceId } = await getWorkspaceContext()
-  const { project: projectId, period, order } = await searchParams
+  const { workspaceId, profile } = await getWorkspaceContext()
+  const { project: projectId, period, order, from, to } = await searchParams
 
-  const dateRange = periodToDateRange(period)
+  const dateRange = (from || to)
+    ? { from: from ? `${from}T00:00:00` : undefined, to: to ? `${to}T23:59:59` : undefined }
+    : periodToDateRange(period)
   const sortOrder: 'asc' | 'desc' = order === 'asc' ? 'asc' : 'desc'
 
-  const [projects, rawExpenses] = await Promise.all([
+  const [projects, rawExpenses, budgetSummary] = await Promise.all([
     getAllProjects(workspaceId),
     projectId
       ? getExpensesForProject(projectId, workspaceId)
       : getAllExpenses(workspaceId, 50, { ...dateRange, order: sortOrder }),
+    projectId ? getBudgetSummary(projectId, workspaceId) : Promise.resolve([]),
   ])
 
   const expenses: ExpenseWithProject[] = projectId
@@ -50,6 +57,8 @@ export default async function ExpensesPage({
   const headingText = selectedProject
     ? `${selectedProject.projectCode} 지출 내역`
     : '워크스페이스 전체 지출 내역'
+
+  const isProfessor = profile.role === 'professor'
 
   // 현재 필터 유지 URL (SortableDateHeader용)
   const filterParams = new URLSearchParams()
@@ -73,10 +82,56 @@ export default async function ExpensesPage({
           basePath="/expenses"
           currentProjectId={projectId ?? null}
         />
+        <DateRangePicker basePath="/expenses" currentProjectId={projectId ?? null} />
       </div>
 
       {/* AI Summary */}
       <AISummaryCard summaryAction={generateExpenseSummaryAction} />
+
+      {/* 예산 미설정 placeholder */}
+      {selectedProject && budgetSummary.length === 0 && (
+        <div className="bg-deep-navy-light rounded-xl border border-white/10 p-4 text-center">
+          <p className="text-white/30 text-sm">
+            이 프로젝트의 예산 항목이 설정되지 않았습니다.{' '}
+            <Link href="/lab?tab=projects" className="text-primary hover:underline">
+              내 연구실에서 설정하기
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {/* 예산 현황 배너 (프로젝트 선택 시) */}
+      {budgetSummary.length > 0 && (
+        <div className="bg-deep-navy-light rounded-xl border border-white/10 p-5">
+          <h3 className="text-white/60 text-xs font-medium mb-3">예산 현황</h3>
+          <div className="space-y-3">
+            {budgetSummary.map((item) => {
+              const pct = item.allocatedAmount > 0
+                ? Math.min(Math.round((item.usedAmount / item.allocatedAmount) * 100), 100)
+                : 0
+              const isOver = item.remaining < 0
+              return (
+                <div key={item.category}>
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-3">
+                      <span className="text-white text-sm font-medium w-20">{item.category}</span>
+                      <span className="text-white/40 text-xs">배정 {item.allocatedAmount.toLocaleString()}원</span>
+                      <span className="text-white/40 text-xs">사용 {item.usedAmount.toLocaleString()}원</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-mono font-medium ${isOver ? 'text-red-400' : 'text-white/70'}`}>
+                        잔여 {item.remaining.toLocaleString()}원
+                      </span>
+                      <span className={`text-xs ${isOver ? 'text-red-400' : 'text-white/40'}`}>{pct}%</span>
+                    </div>
+                  </div>
+                  <BarTrack pct={pct} semantics="budget" />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -119,9 +174,13 @@ export default async function ExpensesPage({
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">업체명</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">금액</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">카테고리</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">예산 항목</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">의심</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">AI 요약</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">파일</th>
+                  {isProfessor && (
+                    <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[40px]"></th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -155,6 +214,12 @@ export default async function ExpensesPage({
                     </td>
                     <td className="px-5 py-4">
                       <span className="text-white/60 text-sm">{expense.category || '—'}</span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <BudgetCategoryCell
+                        expenseId={expense.id}
+                        budgetCategory={expense.budgetCategory}
+                      />
                     </td>
                     <td className="px-5 py-4">
                       {expense.isSuspicious ? (
@@ -192,6 +257,11 @@ export default async function ExpensesPage({
                         <span className="text-white/20 text-xs">—</span>
                       )}
                     </td>
+                    {isProfessor && (
+                      <td className="px-5 py-4 w-[40px]">
+                        <DeleteRowButton id={expense.id} action={deleteExpenseAction} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
