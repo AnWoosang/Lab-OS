@@ -3,8 +3,6 @@ import { getCurrentUserWithProfile } from '@/lib/auth'
 import { getAllProjects, getProjectsByUserId, getUploadSessionsForUser } from '@/lib/db'
 import UploadClient from './components/UploadClient'
 
-export const dynamic = 'force-dynamic'
-
 export default async function UploadPage() {
   const { authUser, profile } = await getCurrentUserWithProfile()
 

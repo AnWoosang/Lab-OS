@@ -4,8 +4,6 @@ import { getCurrentUserWithProfile } from '@/lib/auth'
 import { getWorkspaceByJoinCode, createUserProfile } from '@/lib/supabase'
 import { createSSRClient } from '@/lib/supabase-ssr'
 
-export const dynamic = 'force-dynamic'
-
 interface Props {
   params: Promise<{ code: string }>
 }

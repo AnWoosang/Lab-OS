@@ -1,45 +1,51 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { FolderOpen } from 'lucide-react'
+import { FolderOpen, BarChart2, AlertCircle, Clock, CheckCircle2 } from 'lucide-react'
 import { getCurrentUserWithProfile } from '@/lib/auth'
-import { getAllProjects, type ProjectRow } from '@/lib/db'
+import { getAllProjects, getAllProjectLeads, type ProjectRow } from '@/lib/db'
 import AISummaryCard from '../components/AISummaryCard'
 import AISummaryCell from '../components/AISummaryCell'
 import ExpandableText from '../components/ExpandableText'
 import { generateProjectSummaryAction, generateProjectRowSummaryAction } from './actions'
+import { StatusDot } from '../components/StatusBadge'
+import { BudgetBar } from '../components/BudgetBar'
 
-export const dynamic = 'force-dynamic'
+// ─── Stats Cards ──────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const config = {
-    red_zone: { label: 'Red Zone', className: 'bg-red-500/20 text-red-400 border-red-500/30' },
-    warning: { label: 'Warning', className: 'bg-amber-500/20 text-amber-400 border-amber-500/30' },
-    on_track: { label: 'On Track', className: 'bg-green-500/20 text-green-400 border-green-500/30' },
-  }
-  const c = config[status as keyof typeof config] ?? config.on_track
+function StatsCards({ projects }: { projects: ProjectRow[] }) {
+  const total = projects.length
+  const redZone = projects.filter((p) => p.status === 'red_zone').length
+  const warning = projects.filter((p) => p.status === 'warning').length
+  const totalBudget = projects.reduce((sum, p) => sum + (p.budgetTotal ?? 0), 0)
+  const usedBudget = projects.reduce((sum, p) => sum + (p.budgetUsed ?? 0), 0)
+  const budgetPct = totalBudget > 0 ? Math.round((usedBudget / totalBudget) * 100) : 0
+
+  const stats = [
+    { label: '전체 프로젝트', value: total, Icon: BarChart2, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+    { label: '🔴 Red Zone', value: redZone, Icon: AlertCircle, color: 'text-red-400', bg: 'bg-red-500/10' },
+    { label: '🟡 Warning', value: warning, Icon: Clock, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+    {
+      label: '예산 사용률',
+      value: `${budgetPct}%`,
+      Icon: CheckCircle2,
+      color: budgetPct > 80 ? 'text-red-400' : 'text-green-400',
+      bg: budgetPct > 80 ? 'bg-red-500/10' : 'bg-green-500/10',
+    },
+  ]
+
   return (
-    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${c.className}`}>
-      {c.label}
-    </span>
-  )
-}
-
-function BudgetBar({ used, total }: { used: number | null; total: number | null }) {
-  if (!total || !used) return <span className="text-white/30 text-sm">—</span>
-  const pct = Math.min(Math.round((used / total) * 100), 100)
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 bg-white/10 rounded-full h-1.5 w-24">
-        <div
-          className={`h-full rounded-full ${
-            pct > 80 ? 'bg-red-400' : pct > 60 ? 'bg-amber-400' : 'bg-green-400'
-          }`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-white/60 text-xs font-mono">
-        {pct}% · {used.toLocaleString()}원
-      </span>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {stats.map((stat, i) => (
+        <div key={i} className="bg-deep-navy-light rounded-xl p-5 border border-white/10">
+          <div className="flex items-center gap-3 mb-3">
+            <div className={`w-8 h-8 ${stat.bg} rounded-lg flex items-center justify-center`}>
+              <stat.Icon className={`w-4 h-4 ${stat.color}`} />
+            </div>
+            <span className="text-white/60 text-sm">{stat.label}</span>
+          </div>
+          <div className={`text-3xl font-mono font-bold ${stat.color}`}>{stat.value}</div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -48,7 +54,10 @@ export default async function ProjectsPage() {
   const { profile } = await getCurrentUserWithProfile()
   if (!profile?.workspaceId) redirect('/onboarding')
 
-  const projects = await getAllProjects(profile.workspaceId)
+  const [projects, leadsMap] = await Promise.all([
+    getAllProjects(profile.workspaceId),
+    getAllProjectLeads(profile.workspaceId),
+  ])
   const order = { red_zone: 0, warning: 1, on_track: 2 }
   const sorted = [...projects].sort(
     (a, b) =>
@@ -66,6 +75,8 @@ export default async function ProjectsPage() {
           </p>
         </div>
       </div>
+
+      <StatsCards projects={projects} />
 
       <AISummaryCard summaryAction={generateProjectSummaryAction} />
 
@@ -113,10 +124,12 @@ export default async function ProjectsPage() {
                       </Link>
                     </td>
                     <td className="px-5 py-4">
-                      <span className="text-white/60 text-sm">{project.leadStudent || '—'}</span>
+                      <span className="text-white/60 text-sm">
+                        {(leadsMap[project.id] ?? []).map(l => l.name).join(', ') || '—'}
+                      </span>
                     </td>
                     <td className="px-5 py-4">
-                      <StatusBadge status={project.status} />
+                      <StatusDot status={project.status} />
                     </td>
                     <td className="px-5 py-4 max-w-[180px]">
                       {project.bottleneck

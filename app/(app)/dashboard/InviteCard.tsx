@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link2, Copy, CheckCircle2, RefreshCw } from 'lucide-react'
 import { regenerateJoinCodeAction } from './actions'
 import type { WorkspaceConfig } from '@/lib/supabase'
@@ -15,11 +15,11 @@ export default function InviteCard({ workspace }: Props) {
   const [isRegenerating, setIsRegenerating] = useState(false)
   const [showConfirm, setShowConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inviteLink, setInviteLink] = useState(`/join/${joinCode}`)
 
-  const inviteLink =
-    typeof window !== 'undefined'
-      ? `${window.location.origin}/join/${joinCode}`
-      : `/join/${joinCode}`
+  useEffect(() => {
+    setInviteLink(`${window.location.origin}/join/${joinCode}`)
+  }, [joinCode])
 
   const handleCopy = () => {
     navigator.clipboard.writeText(inviteLink)

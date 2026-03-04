@@ -10,49 +10,26 @@ import {
 import { periodToDateRange } from '@/lib/date-filter'
 import ProjectFilterTabs from '../components/ProjectFilterTabs'
 import PeriodFilterBar from '../components/PeriodFilterBar'
+import DateRangePicker from '../components/DateRangePicker'
 import ExpandableText from '../components/ExpandableText'
 import SortableDateHeader from '../components/SortableDateHeader'
-
-export const dynamic = 'force-dynamic'
-
-function RiskBadge({ progress }: { progress: number | null }) {
-  if (progress === null) return null
-  const isRed = progress < 65
-  const isYellow = progress < 80
-  const config = isRed
-    ? { label: 'Red Zone', className: 'bg-red-500/20 text-red-400 border-red-500/30' }
-    : isYellow
-    ? { label: 'Warning', className: 'bg-amber-500/20 text-amber-400 border-amber-500/30' }
-    : { label: 'On Track', className: 'bg-green-500/20 text-green-400 border-green-500/30' }
-  return (
-    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border ${config.className}`}>
-      {config.label}
-    </span>
-  )
-}
-
-function ProgressBar({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-white/30 text-sm">—</span>
-  const color = value < 65 ? 'bg-red-400' : value < 80 ? 'bg-amber-400' : 'bg-green-400'
-  return (
-    <div className="flex items-center gap-2 min-w-[80px]">
-      <div className="flex-1 bg-white/10 rounded-full h-1.5">
-        <div className={`h-full rounded-full ${color}`} style={{ width: `${value}%` }} />
-      </div>
-      <span className="text-white/60 text-xs font-mono w-8 text-right">{value}%</span>
-    </div>
-  )
-}
+import ReportSummaryModal from '../components/ReportSummaryModal'
+import { StatusDot, progressToStatus } from '../components/StatusBadge'
+import { ProgressBar } from '../components/ProgressBar'
+import DeleteRowButton from '../components/DeleteRowButton'
+import { deleteReportAction } from './actions'
 
 export default async function ReportsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string; period?: string; order?: string }>
+  searchParams: Promise<{ project?: string; period?: string; order?: string; from?: string; to?: string }>
 }) {
-  const { workspaceId } = await getWorkspaceContext()
-  const { project: projectId, period, order } = await searchParams
+  const { workspaceId, profile } = await getWorkspaceContext()
+  const { project: projectId, period, order, from, to } = await searchParams
 
-  const dateRange = periodToDateRange(period)
+  const dateRange = (from || to)
+    ? { from: from ? `${from}T00:00:00` : undefined, to: to ? `${to}T23:59:59` : undefined }
+    : periodToDateRange(period)
   const sortOrder: 'asc' | 'desc' = order === 'asc' ? 'asc' : 'desc'
 
   const [projects, rawReports] = await Promise.all([
@@ -87,6 +64,8 @@ export default async function ReportsPage({
   const filterQs = filterParams.toString()
   const basePathWithFilters = filterQs ? `/reports?${filterQs}` : '/reports'
 
+  const isProfessor = profile.role === 'professor'
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -102,6 +81,7 @@ export default async function ReportsPage({
           basePath="/reports"
           currentProjectId={projectId ?? null}
         />
+        <DateRangePicker basePath="/reports" currentProjectId={projectId ?? null} />
       </div>
 
       {reports.length === 0 ? (
@@ -118,15 +98,19 @@ export default async function ReportsPage({
             <table className="w-full">
               <thead>
                 <tr className="border-b border-white/10">
-                  <th className="text-left px-5 py-3">
+                  <th className="text-left px-5 py-3 w-[120px]">
                     <SortableDateHeader currentOrder={sortOrder} basePath={basePathWithFilters} />
                   </th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">프로젝트</th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">진도율</th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">위험도</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[160px]">프로젝트</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[100px]">작성자</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[130px]">진도율</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[110px]">위험도</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">AI 요약</th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">병목</th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">파일</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[160px]">병목</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[60px]">파일</th>
+                  {isProfessor && (
+                    <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[40px]"></th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -135,36 +119,59 @@ export default async function ReportsPage({
                     key={report.id}
                     className="border-b border-white/5 hover:bg-white/3 transition-colors"
                   >
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4 w-[120px]">
                       <span className="text-white/60 text-xs font-mono whitespace-nowrap">
                         {report.reportDate ?? report.createdAt.slice(0, 10)}
                       </span>
                     </td>
-                    <td className="px-5 py-4">
-                      <p className="text-white font-medium text-sm">{report.projectCode}</p>
+                    <td className="px-5 py-4 w-[160px]">
+                      <p className="text-white font-medium text-sm font-mono whitespace-nowrap">{report.projectCode}</p>
                       {report.projectName && (
-                        <p className="text-white/40 text-xs mt-0.5">{report.projectName}</p>
+                        <p className="text-white/40 text-xs mt-0.5 truncate max-w-[140px]">{report.projectName}</p>
                       )}
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4 w-[100px]">
+                      <span className="text-white/60 text-xs">{report.studentName ?? '—'}</span>
+                    </td>
+                    <td className="px-5 py-4 w-[130px]">
                       <ProgressBar value={report.progress} />
                     </td>
-                    <td className="px-5 py-4">
-                      <RiskBadge progress={report.progress} />
+                    <td className="px-5 py-4 w-[110px]">
+                      {report.progress !== null && (
+                        <StatusDot status={progressToStatus(report.progress)} />
+                      )}
                     </td>
-                    <td className="px-5 py-4 max-w-[220px]">
-                      {report.content
-                        ? <ExpandableText text={report.content} maxLines={2} />
+                    <td className="px-5 py-4 max-w-[260px]">
+                      {(report.content || report.aiAnalysis)
+                        ? (
+                          <div className="space-y-1.5">
+                            {report.content && (
+                              <ExpandableText text={report.content} maxLines={2} />
+                            )}
+                            <ReportSummaryModal
+                              report={{
+                                projectCode: report.projectCode,
+                                projectName: report.projectName,
+                                reportDate: report.reportDate,
+                                createdAt: report.createdAt,
+                                progress: report.progress,
+                                bottleneck: report.bottleneck,
+                                nextPlan: report.nextPlan,
+                                aiAnalysis: report.aiAnalysis,
+                              }}
+                            />
+                          </div>
+                        )
                         : <span className="text-white/30 text-sm">—</span>
                       }
                     </td>
-                    <td className="px-5 py-4 max-w-[180px]">
+                    <td className="px-5 py-4 w-[160px]">
                       {report.bottleneck
                         ? <ExpandableText text={report.bottleneck} maxLines={2} />
                         : <span className="text-white/30 text-sm">—</span>
                       }
                     </td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4 w-[60px]">
                       {report.fileUrl ? (
                         <a
                           href={`/api/file?path=${encodeURIComponent(report.fileUrl)}`}
@@ -179,6 +186,11 @@ export default async function ReportsPage({
                         <span className="text-white/20 text-xs">—</span>
                       )}
                     </td>
+                    {isProfessor && (
+                      <td className="px-5 py-4 w-[40px]">
+                        <DeleteRowButton id={report.id} action={deleteReportAction} />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

@@ -7,6 +7,16 @@ export async function GET(request: NextRequest) {
   const code = searchParams.get('code')
   const next = searchParams.get('next') || ''
 
+  // Supabase/OAuth provider가 에러를 파라미터로 전달한 경우
+  const oauthError = searchParams.get('error')
+  const oauthErrorDescription = searchParams.get('error_description')
+  if (oauthError) {
+    console.error('[auth/callback] OAuth error:', oauthError, oauthErrorDescription)
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(oauthErrorDescription ?? oauthError)}`, origin)
+    )
+  }
+
   if (!code) {
     console.error('[auth/callback] no code in URL')
     return NextResponse.redirect(new URL('/login?error=no_code', origin))
@@ -62,8 +72,8 @@ export async function GET(request: NextRequest) {
     response.cookies.set(name, value, options as Parameters<typeof response.cookies.set>[2])
   })
 
-  // Set role cookie if we have a profile
   if (profile) {
+    // Set role cookie
     response.cookies.set('lab_role', profile.role, {
       httpOnly: true,
       path: '/',
@@ -71,6 +81,9 @@ export async function GET(request: NextRequest) {
       secure: process.env.NODE_ENV === 'production',
       maxAge: 60 * 60 * 24 * 30,
     })
+  } else {
+    // No profile yet — clear any stale role cookie to prevent middleware redirect loop
+    response.cookies.delete('lab_role')
   }
 
   return response

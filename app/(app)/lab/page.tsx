@@ -1,15 +1,13 @@
 import Link from 'next/link'
 import { getWorkspaceContext } from '@/lib/workspace-context'
 import { getWorkspaceById, getPendingStudents } from '@/lib/supabase'
-import { getAllProjects, getApprovedStudents, getProjectMembersWithUserIds } from '@/lib/db'
+import { getAllProjects, getApprovedStudents, getProjectMembersWithUserIds, getAllProjectLeads } from '@/lib/db'
 import LabTabs from './LabTabs'
 import ProjectCreateForm from './ProjectCreateForm'
 import StudentApprovalList from './StudentApprovalList'
 import StudentAssignmentList from './StudentAssignmentList'
 import InviteCard from '../dashboard/InviteCard'
 import ProjectManageRow from './ProjectManageRow'
-
-export const dynamic = 'force-dynamic'
 
 interface Props {
   searchParams: Promise<{ tab?: string; status?: string }>
@@ -22,12 +20,13 @@ export default async function LabPage({ searchParams }: Props) {
     ? (tab as string)
     : 'projects'
 
-  const [workspace, projects, pendingStudents, approvedStudents, assignments] = await Promise.all([
+  const [workspace, projects, pendingStudents, approvedStudents, assignments, leadsMap] = await Promise.all([
     getWorkspaceById(workspaceId),
     getAllProjects(workspaceId),
     getPendingStudents(workspaceId),
     getApprovedStudents(workspaceId),
     getProjectMembersWithUserIds(workspaceId),
+    getAllProjectLeads(workspaceId),
   ])
 
   const statusFilter = status === 'completed' ? 'completed' : 'active'
@@ -57,7 +56,7 @@ export default async function LabPage({ searchParams }: Props) {
           {currentTab === 'projects' && (
             <>
               <h2 className="text-white font-semibold mb-4">프로젝트 관리</h2>
-              <ProjectCreateForm />
+              <ProjectCreateForm approvedStudents={approvedStudents} />
 
               {/* 상태 필터 Pills */}
               <div className="flex gap-2 mb-4">
@@ -102,7 +101,9 @@ export default async function LabPage({ searchParams }: Props) {
                         <tr className="border-b border-white/10">
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">과제코드</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">프로젝트명</th>
-                          <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">법인카드</th>
+                          <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">담당자</th>
+                          <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">기간</th>
+                          <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">예산</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">상태</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">작업</th>
                         </tr>
@@ -113,6 +114,8 @@ export default async function LabPage({ searchParams }: Props) {
                             key={project.id}
                             project={project}
                             workspaceId={workspaceId}
+                            approvedStudents={approvedStudents}
+                            leads={leadsMap[project.id] ?? []}
                           />
                         ))}
                       </tbody>

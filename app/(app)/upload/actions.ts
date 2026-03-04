@@ -1,8 +1,9 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { createSSRClient } from '@/lib/supabase-ssr'
 import { getUserProfile, getSignedUrl, createSignedUploadUrl, deleteFile } from '@/lib/supabase'
-import { processFile } from '@/lib/gemini'
+import { processFile, parseExpense as parseExpenseGemini } from '@/lib/gemini'
 import {
   findProjectByCode,
   findProjectByCardLast4,
@@ -10,6 +11,7 @@ import {
   createExpense,
   createUploadSession,
   updateUploadSession,
+  getProjectBudgets,
 } from '@/lib/db'
 import type { ReportData, ExpenseData } from '@/lib/schemas'
 
@@ -19,6 +21,8 @@ export interface UploadResult {
   message?: string
   error?: string
   sessionId?: string
+  budgetCategory?: string | null
+  budgetCategoryAutoAssigned?: boolean
 }
 
 const SUPPORTED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
@@ -59,7 +63,8 @@ export async function processUploadAction(
   storagePath: string,
   fileName: string,
   mimeType: string,
-  projectId: string | null
+  projectId: string | null,
+  budgetCategory: string | null = null
 ): Promise<UploadResult> {
   let sessionId: string | undefined
 
@@ -124,6 +129,7 @@ export async function processUploadAction(
 
       await createReport(workspaceId, resolvedProjectId, reportData, storagePath, sessionId)
       await updateUploadSession(sessionId, { status: 'done', resultType: 'report', resultData: data as Record<string, unknown> })
+      revalidatePath('/lab')
       console.log('[upload] ✓ 보고서 저장 완료!')
 
       return {
@@ -156,8 +162,23 @@ export async function processUploadAction(
         return { ok: false, type, error: '프로젝트를 선택해주세요.', sessionId }
       }
 
-      await createExpense(workspaceId, resolvedProjectId, expenseData, storagePath)
+      // AI 예산 항목 자동 분류 (사전 선택 없을 때)
+      let finalBudgetCategory = budgetCategory
+      let autoAssigned = false
+      if (!finalBudgetCategory) {
+        const projectBudgets = await getProjectBudgets(resolvedProjectId, workspaceId)
+        if (projectBudgets.length > 0) {
+          const categories = projectBudgets.map((b) => b.category)
+          const enriched = await parseExpenseGemini(buffer, mimeType, categories)
+          finalBudgetCategory = enriched.budget_category ?? null
+          if (finalBudgetCategory) autoAssigned = true
+          console.log('[upload] ✓ AI 예산 분류:', finalBudgetCategory)
+        }
+      }
+
+      await createExpense(workspaceId, resolvedProjectId, expenseData, storagePath, finalBudgetCategory)
       await updateUploadSession(sessionId, { status: 'done', resultType: 'expense', resultData: data as Record<string, unknown> })
+      revalidatePath('/lab')
       console.log('[upload] ✓ 영수증 저장 완료!')
 
       const suspiciousNote = expenseData.is_suspicious ? ' ⚠️ 부적합 항목 포함' : ''
@@ -166,6 +187,8 @@ export async function processUploadAction(
         type: 'expense',
         message: `영수증 등록 완료! ${expenseData.vendor ?? ''} · ${expenseData.total_amount?.toLocaleString() ?? '?'}원 · ${expenseData.category}${suspiciousNote}`,
         sessionId,
+        budgetCategory: finalBudgetCategory,
+        budgetCategoryAutoAssigned: autoAssigned,
       }
     }
 

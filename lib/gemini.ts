@@ -1,11 +1,12 @@
 import { GoogleGenerativeAI, Part } from '@google/generative-ai'
 import { REPORT_PARSER_SYSTEM_PROMPT } from './prompts/report-parser'
-import { EXPENSE_PARSER_SYSTEM_PROMPT } from './prompts/expense-parser'
+import { buildExpenseParserPrompt } from './prompts/expense-parser'
 import { ReportSchema, ExpenseSchema, type FileType, type ReportData, type ExpenseData } from './schemas'
 import type { ExpenseWithProject, ProjectRow } from './db'
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
-const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const flashModel = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+const proModel = genAI.getGenerativeModel({ model: 'gemini-2.5-pro' })
 
 // ─── Retry wrapper ────────────────────────────────────────────────────────────
 
@@ -27,12 +28,18 @@ export async function detectFileType(
   mimeType: string
 ): Promise<FileType> {
   console.log('[gemini] detectFileType — mimeType:', mimeType, 'bufferSize:', fileBuffer.length)
-  const prompt = `이 파일이 연구 진도 보고서인지 영수증인지 분류해.
-보고서면 "report", 영수증이면 "expense", 둘 다 아니면 "unknown"만 반환해.
-반드시 세 단어 중 하나만 반환한다.
+  const prompt = `이 파일을 다음 세 가지 중 하나로 분류해. 반드시 세 단어 중 하나만 반환한다.
 
-"unknown" 예시: 셀카/인물 사진, 연구와 무관한 개인 사진, 스크린샷, 빈 이미지, 테스트 이미지,
-카카오톡 등 채팅 캡처, 발표 슬라이드, 공식 연구 진도 보고서나 공식 지출 영수증이 아닌 모든 파일.`
+"report": 연구/학술과 관련된 모든 문서
+  — 주간 진도 보고서, 논문, 발표자료(PPT), 연구계획서, 기술 보고서,
+    실험 결과 보고서, 학위 논문, 리뷰 논문, 분석 보고서 등
+
+"expense": 지출 영수증 또는 지출 증빙 문서
+  — 가게 영수증, 카드 전표, 세금계산서 등
+
+"unknown": 위 두 가지에 해당하지 않는 파일
+  — 셀카/인물 사진, 연구와 무관한 개인 사진, 카카오톡 등 채팅 캡처,
+    빈 이미지, 의미 없는 테스트 이미지`
 
   const imagePart: Part = {
     inlineData: {
@@ -41,7 +48,7 @@ export async function detectFileType(
     },
   }
 
-  const result = await withRetry(() => model.generateContent([prompt, imagePart]))
+  const result = await withRetry(() => flashModel.generateContent([prompt, imagePart]))
   const text = result.response.text().trim().toLowerCase()
   console.log('[gemini] detectFileType raw response:', text)
 
@@ -65,7 +72,7 @@ export async function parseReport(
     },
   }
 
-  const result = await withRetry(() => model.generateContent([
+  const result = await withRetry(() => proModel.generateContent([
     REPORT_PARSER_SYSTEM_PROMPT,
     imagePart,
   ]))
@@ -84,7 +91,7 @@ export async function parseReport(
       project_code: null, project_name: null, student_name: null,
       report_date: null, week_label: null, summary: '',
       progress: null, progress_estimated: false, bottleneck: null,
-      next_plan: null, risk_score: 'green', error_code: 'UNREADABLE_FILE',
+      next_plan: null, ai_analysis: null, risk_score: 'green', error_code: 'UNREADABLE_FILE',
     }
   }
 
@@ -95,18 +102,31 @@ export async function parseReport(
       project_code: null, project_name: null, student_name: null,
       report_date: null, week_label: null, summary: '',
       progress: null, progress_estimated: false, bottleneck: null,
-      next_plan: null, risk_score: 'green', error_code: 'UNREADABLE_FILE',
+      next_plan: null, ai_analysis: null, risk_score: 'green', error_code: 'UNREADABLE_FILE',
     }
   }
-  console.log('[gemini] ✓ parseReport 완료:', JSON.stringify(parsed.data))
-  return parsed.data
+
+  const data = parsed.data
+
+  // Post-process: 미래 날짜는 할루시네이션 — null로 보정
+  if (data.report_date) {
+    const d = new Date(data.report_date)
+    if (isNaN(d.getTime()) || d > new Date()) {
+      console.warn('[gemini] report_date 미래/invalid 감지, null 처리:', data.report_date)
+      data.report_date = null
+    }
+  }
+
+  console.log('[gemini] ✓ parseReport 완료:', JSON.stringify(data))
+  return data
 }
 
 // ─── Parse expense ────────────────────────────────────────────────────────────
 
 export async function parseExpense(
   fileBuffer: Buffer,
-  mimeType: string
+  mimeType: string,
+  budgetCategories?: string[]
 ): Promise<ExpenseData> {
   console.log('[gemini] parseExpense 시작')
   const imagePart: Part = {
@@ -116,8 +136,8 @@ export async function parseExpense(
     },
   }
 
-  const result = await withRetry(() => model.generateContent([
-    EXPENSE_PARSER_SYSTEM_PROMPT,
+  const result = await withRetry(() => flashModel.generateContent([
+    buildExpenseParserPrompt(budgetCategories),
     imagePart,
   ]))
   const text = result.response.text().trim()
@@ -134,7 +154,7 @@ export async function parseExpense(
       vendor: null, receipt_date: null, total_amount: null,
       currency: 'KRW', items: [], category: '기타',
       budget_code: 'UNKNOWN', is_suspicious: false,
-      suspicious_reason: null, card_last4: null, error_code: 'UNREADABLE_FILE',
+      suspicious_reason: null, card_last4: null, budget_category: null, error_code: 'UNREADABLE_FILE',
     }
   }
 
@@ -145,7 +165,7 @@ export async function parseExpense(
       vendor: null, receipt_date: null, total_amount: null,
       currency: 'KRW', items: [], category: '기타',
       budget_code: 'UNKNOWN', is_suspicious: false,
-      suspicious_reason: null, card_last4: null, error_code: 'UNREADABLE_FILE',
+      suspicious_reason: null, card_last4: null, budget_category: null, error_code: 'UNREADABLE_FILE',
     }
   }
   console.log('[gemini] ✓ parseExpense 완료:', JSON.stringify(parsed.data))
@@ -178,7 +198,7 @@ export async function summarizeExpenses(expenses: ExpenseWithProject[]): Promise
 총 지출 현황, 카테고리 분포 특이사항, 의심 건 위험도를 포함해.
 단, 숫자나 항목 나열 없이 자연스러운 문장으로만 작성해.`
 
-  const result = await model.generateContent(prompt)
+  const result = await flashModel.generateContent(prompt)
   return result.response.text().trim()
 }
 
@@ -203,7 +223,7 @@ export async function summarizeProjects(projects: ProjectRow[]): Promise<string>
 Red Zone 과제 중점, 공통 병목 패턴, 예산 위험 과제를 포함해.
 단, 숫자나 항목 나열 없이 자연스러운 문장으로만 작성해.`
 
-  const result = await model.generateContent(prompt)
+  const result = await flashModel.generateContent(prompt)
   return result.response.text().trim()
 }
 
@@ -225,7 +245,7 @@ export async function summarizeExpenseRow(expense: {
 
 설명만 반환하고, 다른 내용은 쓰지 마.`
 
-  const result = await model.generateContent(prompt)
+  const result = await flashModel.generateContent(prompt)
   return result.response.text().trim()
 }
 
@@ -257,7 +277,7 @@ export async function summarizeProjectRow(project: {
 
 교수가 이 과제에서 주목해야 할 핵심 사항만 요약해. 설명만 반환하고 다른 내용은 쓰지 마.`
 
-  const result = await model.generateContent(prompt)
+  const result = await flashModel.generateContent(prompt)
   return result.response.text().trim()
 }
 
@@ -293,6 +313,7 @@ export async function processFile(
       progress_estimated: false,
       bottleneck: null,
       next_plan: null,
+      ai_analysis: null,
       risk_score: 'green' as const,
       error_code: 'OUT_OF_SCOPE' as const,
     },
