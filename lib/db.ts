@@ -34,9 +34,9 @@ export interface ReportRow {
   bottleneck: string | null
   nextPlan: string | null
   aiAnalysis: string | null
-  progress: number | null
   fileUrl: string | null
   studentName: string | null
+  professorResolved: boolean
   createdAt: string
 }
 
@@ -250,7 +250,6 @@ export async function createReport(
       bottleneck: data.bottleneck ?? null,
       next_plan: data.next_plan ?? null,
       ai_analysis: data.ai_analysis ?? null,
-      progress: data.progress,
       file_url: fileUrl,
       student_name: data.student_name ?? null,
       upload_session_id: sessionId ?? null,
@@ -292,9 +291,9 @@ export async function getReportsForProject(
     bottleneck: (row.bottleneck as string | null) ?? null,
     nextPlan: (row.next_plan as string | null) ?? null,
     aiAnalysis: (row.ai_analysis as string | null) ?? null,
-    progress: row.progress,
     fileUrl: row.file_url,
     studentName: (row.student_name as string | null) ?? null,
+    professorResolved: (row.professor_resolved as boolean) ?? false,
     createdAt: row.created_at,
   }))
 }
@@ -591,6 +590,36 @@ export async function getAllProjectLeads(
   return result
 }
 
+export async function getProjectFreeLeadNames(
+  projectId: string,
+  workspaceId: string
+): Promise<string[]> {
+  const supabase = createServerClient()
+  const { data, error } = await supabase
+    .from('project_members')
+    .select('name')
+    .eq('project_id', projectId)
+    .eq('workspace_id', workspaceId)
+    .is('user_id', null)
+    .order('created_at', { ascending: true })
+
+  if (error) return []
+  return (data ?? []).map((row) => row.name as string)
+}
+
+export async function clearProjectFreeLeadMembers(
+  projectId: string,
+  workspaceId: string
+): Promise<void> {
+  const supabase = createServerClient()
+  await supabase
+    .from('project_members')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('workspace_id', workspaceId)
+    .is('user_id', null)
+}
+
 export async function setProjectLeads(
   projectId: string,
   workspaceId: string,
@@ -655,9 +684,44 @@ export async function getAllReports(
     bottleneck: (row.bottleneck as string | null) ?? null,
     nextPlan: (row.next_plan as string | null) ?? null,
     aiAnalysis: (row.ai_analysis as string | null) ?? null,
-    progress: row.progress,
     fileUrl: row.file_url,
     studentName: (row.student_name as string | null) ?? null,
+    professorResolved: (row.professor_resolved as boolean) ?? false,
+    createdAt: row.created_at,
+    projectCode: (row.projects as { project_code: string; project_name: string | null } | null)?.project_code ?? '—',
+    projectName: (row.projects as { project_code: string; project_name: string | null } | null)?.project_name ?? null,
+  }))
+}
+
+export async function getBottleneckReports(
+  workspaceId: string,
+  limit = 30
+): Promise<ReportWithProject[]> {
+  const supabase = createServerClient()
+  const { data, error } = await supabase
+    .from('reports')
+    .select('*, projects(project_code, project_name)')
+    .eq('workspace_id', workspaceId)
+    .not('bottleneck', 'is', null)
+    .order('report_date', { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error('[db:reports] getBottleneckReports error:', error)
+    return []
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    projectId: row.project_id,
+    reportDate: row.report_date,
+    content: row.content,
+    bottleneck: (row.bottleneck as string | null) ?? null,
+    nextPlan: (row.next_plan as string | null) ?? null,
+    aiAnalysis: (row.ai_analysis as string | null) ?? null,
+    fileUrl: row.file_url,
+    studentName: (row.student_name as string | null) ?? null,
+    professorResolved: (row.professor_resolved as boolean) ?? false,
     createdAt: row.created_at,
     projectCode: (row.projects as { project_code: string; project_name: string | null } | null)?.project_code ?? '—',
     projectName: (row.projects as { project_code: string; project_name: string | null } | null)?.project_name ?? null,

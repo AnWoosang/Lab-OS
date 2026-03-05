@@ -2,6 +2,7 @@
 
 import { useActionState } from 'react'
 import { updateCardLast4Action } from './actions'
+import { FormMessage } from '@/app/(app)/components/FormMessage'
 
 interface Props {
   projectId: string
@@ -32,12 +33,7 @@ export default function CardLast4Form({ projectId, workspaceId, currentCardLast4
       >
         {isPending ? '저장 중...' : '저장'}
       </button>
-      {state?.ok && (
-        <span className="text-green-400 text-xs">✓ 저장됨</span>
-      )}
-      {state?.error && (
-        <span className="text-red-400 text-xs">{state.error}</span>
-      )}
+      <FormMessage state={state} />
     </form>
   )
 }

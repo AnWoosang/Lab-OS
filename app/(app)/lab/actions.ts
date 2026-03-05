@@ -12,6 +12,8 @@ import {
   setProjectBudgets,
   setProjectLeads,
   updateExpenseBudgetCategory,
+  getProjectFreeLeadNames,
+  clearProjectFreeLeadMembers,
   type ProjectBudgetRow,
 } from '@/lib/db'
 import { approveStudent, rejectStudent, createServerClient } from '@/lib/supabase'
@@ -79,6 +81,14 @@ export async function createProjectAction(
           await setProjectLeads(projectId, workspaceId, leadIds)
         }
       }
+
+      const freeLeadNamesJson = formData.get('free_lead_names') as string | null
+      if (freeLeadNamesJson) {
+        const names: string[] = JSON.parse(freeLeadNamesJson)
+        for (const name of names) {
+          if (name.trim()) await addProjectMember(projectId, workspaceId, name.trim())
+        }
+      }
     }
 
     revalidatePath('/lab')
@@ -86,6 +96,15 @@ export async function createProjectAction(
   } catch (e) {
     logError('createProjectAction', e)
     return { error: '프로젝트 생성에 실패했습니다.' }
+  }
+}
+
+export async function getProjectFreeLeadsAction(projectId: string): Promise<string[]> {
+  try {
+    const { workspaceId } = await getWorkspaceContext()
+    return await getProjectFreeLeadNames(projectId, workspaceId)
+  } catch {
+    return []
   }
 }
 
@@ -221,6 +240,15 @@ export async function updateProjectMetaAction(
     if (leadUserIdsJson) {
       const userIds: string[] = JSON.parse(leadUserIdsJson)
       await setProjectLeads(projectId, workspaceId, userIds)
+    }
+
+    const freeLeadNamesJson = formData.get('free_lead_names') as string | null
+    if (freeLeadNamesJson !== null) {
+      const names: string[] = JSON.parse(freeLeadNamesJson)
+      await clearProjectFreeLeadMembers(projectId, workspaceId)
+      for (const name of names) {
+        if (name.trim()) await addProjectMember(projectId, workspaceId, name.trim())
+      }
     }
 
     revalidatePath('/lab')

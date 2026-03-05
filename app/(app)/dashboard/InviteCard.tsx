@@ -4,6 +4,17 @@ import { useState, useEffect } from 'react'
 import { Link2, Copy, CheckCircle2, RefreshCw } from 'lucide-react'
 import { regenerateJoinCodeAction } from './actions'
 import type { WorkspaceConfig } from '@/lib/supabase'
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/app/components/ui/alert-dialog'
 
 interface Props {
   workspace: WorkspaceConfig
@@ -13,7 +24,6 @@ export default function InviteCard({ workspace }: Props) {
   const [joinCode, setJoinCode] = useState(workspace.joinCode)
   const [copied, setCopied] = useState(false)
   const [isRegenerating, setIsRegenerating] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inviteLink, setInviteLink] = useState(`/join/${joinCode}`)
 
@@ -32,7 +42,6 @@ export default function InviteCard({ workspace }: Props) {
     setError(null)
     const result = await regenerateJoinCodeAction()
     setIsRegenerating(false)
-    setShowConfirm(false)
     if (result.ok && result.joinCode) {
       setJoinCode(result.joinCode)
     } else {
@@ -74,33 +83,29 @@ export default function InviteCard({ workspace }: Props) {
         <p className="text-red-400 text-xs mb-3 px-1">{error}</p>
       )}
 
-      {showConfirm ? (
-        <div className="flex items-center gap-2">
-          <p className="text-white/50 text-xs flex-1">기존 링크가 무효화됩니다. 계속하시겠습니까?</p>
-          <button
-            onClick={() => setShowConfirm(false)}
-            className="px-3 py-1.5 text-white/50 hover:text-white text-xs transition-colors"
-          >
-            취소
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <button className="flex items-center gap-1.5 text-white/30 hover:text-white/60 text-xs transition-colors">
+            <RefreshCw className="w-3 h-3" />
+            링크 재생성 (유출 시 무효화)
           </button>
-          <button
-            onClick={handleRegenerate}
-            disabled={isRegenerating}
-            className="px-3 py-1.5 bg-red-500/20 text-red-400 hover:bg-red-500/30 rounded-lg text-xs transition-colors disabled:opacity-50 flex items-center gap-1"
-          >
-            {isRegenerating && <RefreshCw className="w-3 h-3 animate-spin" />}
-            확인
-          </button>
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowConfirm(true)}
-          className="flex items-center gap-1.5 text-white/30 hover:text-white/60 text-xs transition-colors"
-        >
-          <RefreshCw className="w-3 h-3" />
-          링크 재생성 (유출 시 무효화)
-        </button>
-      )}
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>초대 링크 재생성</AlertDialogTitle>
+            <AlertDialogDescription>
+              기존 링크가 무효화됩니다. 계속하시겠습니까?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>취소</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRegenerate} disabled={isRegenerating}>
+              {isRegenerating && <RefreshCw className="w-3 h-3 mr-1.5 inline animate-spin" />}
+              확인
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

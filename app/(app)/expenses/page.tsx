@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { Receipt, AlertTriangle, ExternalLink } from 'lucide-react'
+import { EmptyState } from '../components/EmptyState'
 import { BarTrack } from '../components/BarTrack'
 import { getWorkspaceContext } from '@/lib/workspace-context'
 import {
@@ -154,13 +155,7 @@ export default async function ExpensesPage({
       </div>
 
       {expenses.length === 0 ? (
-        <div className="bg-deep-navy-light rounded-xl border border-white/10 p-16 text-center">
-          <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Receipt className="w-7 h-7 text-white/20" />
-          </div>
-          <p className="text-white/40 text-sm">아직 등록된 영수증이 없습니다.</p>
-          <p className="text-white/25 text-xs mt-1">학생이 영수증을 업로드하면 여기에 표시됩니다.</p>
-        </div>
+        <EmptyState icon={Receipt} message="아직 등록된 영수증이 없습니다." sub="학생이 영수증을 업로드하면 여기에 표시됩니다." />
       ) : (
         <div className="bg-deep-navy-light rounded-xl border border-white/10 overflow-hidden">
           <div className="overflow-x-auto">

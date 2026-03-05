@@ -1,8 +1,10 @@
 'use server'
 
-import { revalidateTag } from 'next/cache'
+import { revalidatePath, revalidateTag } from 'next/cache'
 import { getCurrentUserWithProfile } from '@/lib/auth'
 import { regenerateJoinCode } from '@/lib/supabase'
+import { getWorkspaceContext } from '@/lib/workspace-context'
+import { createServerClient } from '@/lib/supabase'
 
 export async function regenerateJoinCodeAction(): Promise<{ ok: boolean; joinCode?: string; error?: string }> {
   const { profile } = await getCurrentUserWithProfile()
@@ -19,4 +21,21 @@ export async function regenerateJoinCodeAction(): Promise<{ ok: boolean; joinCod
     console.error('[dashboard:regenerateJoinCode]', err)
     return { ok: false, error: '링크 재생성 중 오류가 발생했습니다.' }
   }
+}
+
+export async function toggleProfessorResolvedAction(
+  reportId: string,
+  resolved: boolean
+): Promise<void> {
+  await getWorkspaceContext()
+
+  const supabase = createServerClient()
+  const { error } = await supabase
+    .from('reports')
+    .update({ professor_resolved: resolved })
+    .eq('id', reportId)
+
+  if (error) throw new Error(`Failed to update professor_resolved: ${error.message}`)
+
+  revalidatePath('/dashboard')
 }

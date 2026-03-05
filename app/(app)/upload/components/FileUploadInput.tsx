@@ -1,7 +1,9 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
+import { useDropzone } from 'react-dropzone'
 import { UploadCloud, Send } from 'lucide-react'
+import { LoadingSpinner } from '@/app/(app)/components/LoadingSpinner'
 
 interface Props {
   onUpload: (files: File[]) => void
@@ -9,12 +11,16 @@ interface Props {
   disabled?: boolean
 }
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
+const ACCEPTED_MIME_TYPES = {
+  'image/jpeg': [],
+  'image/png': [],
+  'image/gif': [],
+  'image/webp': [],
+  'application/pdf': [],
+}
 
 export default function FileUploadInput({ onUpload, isPending, disabled }: Props) {
-  const inputRef = useRef<HTMLInputElement>(null)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([])
-  const [dragOver, setDragOver] = useState(false)
   const [justMounted, setJustMounted] = useState(true)
 
   useEffect(() => {
@@ -34,37 +40,25 @@ export default function FileUploadInput({ onUpload, isPending, disabled }: Props
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedFiles, isPending, disabled])
 
-  const handleFiles = (files: File[]) => {
-    const valid = files.filter(f => ALLOWED_TYPES.includes(f.type) && f.size <= 15 * 1024 * 1024).slice(0, 5)
-    if (valid.length > 0) setSelectedFiles(valid)
-  }
-
   const handleSubmit = (files: File[]) => {
     if (files.length === 0 || isPending || disabled) return
     onUpload(files)
     setSelectedFiles([])
-    if (inputRef.current) inputRef.current.value = ''
   }
 
-  const openPicker = () => {
-    if (!isPending && !disabled) inputRef.current?.click()
-  }
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    accept: ACCEPTED_MIME_TYPES,
+    maxSize: 15 * 1024 * 1024,
+    multiple: true,
+    maxFiles: 5,
+    disabled: isPending || disabled,
+    onDrop: (acceptedFiles) => {
+      if (acceptedFiles.length > 0) setSelectedFiles(acceptedFiles.slice(0, 5))
+    },
+  })
 
   return (
     <div className="border-t border-white/10 bg-deep-navy-light p-4">
-      {/* 숨긴 파일 입력 */}
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept={ALLOWED_TYPES.join(',')}
-        className="sr-only"
-        onChange={(e) => {
-          const files = Array.from(e.target.files ?? []).slice(0, 5)
-          if (files.length > 0) handleFiles(files)
-        }}
-      />
-
       {selectedFiles.length > 0 ? (
         /* ── 파일 선택 후: 파일 목록 + 전송 버튼 ── */
         <div className="flex items-start gap-3">
@@ -92,10 +86,7 @@ export default function FileUploadInput({ onUpload, isPending, disabled }: Props
             aria-label="업로드"
           >
             {isPending ? (
-              <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
+              <LoadingSpinner className="w-5 h-5" />
             ) : (
               <Send className="w-5 h-5" />
             )}
@@ -104,27 +95,12 @@ export default function FileUploadInput({ onUpload, isPending, disabled }: Props
       ) : (
         /* ── 드롭존: 클릭 or 드래그앤드롭 ── */
         <div
-          role="button"
-          tabIndex={0}
-          aria-label="파일 선택 또는 드래그앤드롭"
-          onClick={openPicker}
-          onKeyDown={(e) => e.key === 'Enter' && openPicker()}
-          onDragOver={(e) => {
-            e.preventDefault()
-            if (!isPending && !disabled) setDragOver(true)
-          }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDragOver(false)
-            const files = Array.from(e.dataTransfer.files).slice(0, 5)
-            handleFiles(files)
-          }}
+          {...getRootProps()}
           className={[
             'cursor-pointer select-none rounded-xl border-2 border-dashed px-6 py-5',
             'flex flex-col items-center gap-2 transition-all duration-300 outline-none',
             'focus-visible:ring-2 focus-visible:ring-primary/50',
-            dragOver
+            isDragActive
               ? 'border-primary bg-primary/10'
               : justMounted
               ? 'border-primary/50 bg-primary/5'
@@ -132,11 +108,12 @@ export default function FileUploadInput({ onUpload, isPending, disabled }: Props
             isPending || disabled ? 'opacity-40 cursor-not-allowed pointer-events-none' : '',
           ].join(' ')}
         >
+          <input {...getInputProps()} />
           <UploadCloud
-            className={`w-8 h-8 transition-colors ${dragOver ? 'text-primary' : 'text-white/30'}`}
+            className={`w-8 h-8 transition-colors ${isDragActive ? 'text-primary' : 'text-white/30'}`}
           />
-          <p className={`text-sm font-medium transition-colors ${dragOver ? 'text-primary' : 'text-white/50'}`}>
-            {dragOver ? '파일을 여기에 놓으세요' : '주간 진행 보고서 또는 지출 영수증 업로드'}
+          <p className={`text-sm font-medium transition-colors ${isDragActive ? 'text-primary' : 'text-white/50'}`}>
+            {isDragActive ? '파일을 여기에 놓으세요' : '주간 진행 보고서 또는 지출 영수증 업로드'}
           </p>
           <p className="text-white/25 text-xs">JPG · PNG · PDF · 최대 15MB · 최대 5개</p>
         </div>

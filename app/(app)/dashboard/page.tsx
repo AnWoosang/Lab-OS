@@ -1,13 +1,12 @@
 import Link from 'next/link'
 import { getWorkspaceContext } from '@/lib/workspace-context'
 import { getWorkspaceById, getPendingStudents } from '@/lib/supabase'
-import { getAllProjects, getAllReports, getAllExpenses, type ReportWithProject, type ExpenseWithProject } from '@/lib/db'
+import { getBottleneckReports, getAllReports, getAllExpenses, type ReportWithProject, type ExpenseWithProject } from '@/lib/db'
 import InviteCopyButton from './InviteCopyButton'
 import PendingStudents from './PendingStudents'
-import RiskAlerts from './RiskAlerts'
+import ProfessorTodos from './ProfessorTodos'
 import ExpandableText from '../components/ExpandableText'
-import { StatusDot, progressToStatus } from '../components/StatusBadge'
-import { ProgressBar } from '../components/ProgressBar'
+import { StatusDot } from '../components/StatusBadge'
 import ReportSummaryModal from '../components/ReportSummaryModal'
 
 // ─── Recent Reports ───────────────────────────────────────────────────────────
@@ -32,8 +31,7 @@ function RecentReports({ reports }: { reports: ReportWithProject[] }) {
                 <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">날짜</th>
                 <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">프로젝트</th>
                 <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">작성자</th>
-                <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">진도율</th>
-                <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">위험도</th>
+                <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">상태</th>
                 <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">AI 요약</th>
                 <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">병목</th>
               </tr>
@@ -54,12 +52,9 @@ function RecentReports({ reports }: { reports: ReportWithProject[] }) {
                     <span className="text-white/60 text-sm">{report.studentName ?? '—'}</span>
                   </td>
                   <td className="px-5 py-3">
-                    <ProgressBar value={report.progress} />
-                  </td>
-                  <td className="px-5 py-3">
-                    {report.progress != null
-                      ? <StatusDot status={progressToStatus(report.progress)} />
-                      : <span className="text-white/30 text-sm">—</span>
+                    {report.bottleneck !== null
+                      ? <StatusDot status="warning" />
+                      : <span className="text-white/20 text-sm">—</span>
                     }
                   </td>
                   <td className="px-5 py-3">
@@ -149,10 +144,10 @@ function RecentExpenses({ expenses }: { expenses: ExpenseWithProject[] }) {
 
 export default async function DashboardPage() {
   const { workspaceId } = await getWorkspaceContext()
-  const [workspace, pendingStudents, projects, recentReports, recentExpenses] = await Promise.all([
+  const [workspace, pendingStudents, bottleneckReports, recentReports, recentExpenses] = await Promise.all([
     getWorkspaceById(workspaceId),
     getPendingStudents(workspaceId),
-    getAllProjects(workspaceId),
+    getBottleneckReports(workspaceId),
     getAllReports(workspaceId, 5),
     getAllExpenses(workspaceId, 5),
   ])
@@ -170,8 +165,8 @@ export default async function DashboardPage() {
       {/* Pending students approval */}
       <PendingStudents students={pendingStudents} />
 
-      {/* Risk alerts */}
-      <RiskAlerts projects={projects} />
+      {/* Professor todos */}
+      <ProfessorTodos todos={bottleneckReports} />
 
       {/* Recent reports */}
       <RecentReports reports={recentReports} />

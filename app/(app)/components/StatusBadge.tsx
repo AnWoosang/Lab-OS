@@ -16,12 +16,6 @@ export const STATUS_CONFIG = {
   },
 }
 
-export function progressToStatus(n: number): 'red_zone' | 'warning' | 'on_track' {
-  if (n < 65) return 'red_zone'
-  if (n < 80) return 'warning'
-  return 'on_track'
-}
-
 export function StatusBadge({ status }: { status: string }) {
   const c = STATUS_CONFIG[status as keyof typeof STATUS_CONFIG] ?? STATUS_CONFIG.on_track
   return (

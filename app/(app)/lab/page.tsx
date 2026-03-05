@@ -104,7 +104,6 @@ export default async function LabPage({ searchParams }: Props) {
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">담당자</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">기간</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">예산</th>
-                          <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">상태</th>
                           <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">작업</th>
                         </tr>
                       </thead>
