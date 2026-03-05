@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import { useDropzone } from 'react-dropzone'
 import { getUploadUrlAction, processUploadAction, type UploadResult } from '../actions'
 import { getProjectBudgetsAction } from '@/app/(app)/lab/actions'
 import MessageBubble, { type MessageItem } from './MessageBubble'
@@ -15,7 +16,13 @@ interface Props {
   initialSessions: UploadSessionRow[]
 }
 
-const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf']
+const ACCEPTED_MIME_TYPES = {
+  'image/jpeg': [],
+  'image/png': [],
+  'image/gif': [],
+  'image/webp': [],
+  'application/pdf': [],
+}
 
 export default function UploadClient({ projects, myProjects, initialSessions }: Props) {
   const displayProjects = myProjects.length > 0 ? myProjects : projects
@@ -27,9 +34,7 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
   const [budgetCategories, setBudgetCategories] = useState<ProjectBudgetRow[]>([])
   const [selectedBudgetCategory, setSelectedBudgetCategory] = useState<string>('')
   const [activeCount, setActiveCount] = useState(0)
-  const [fullAreaDrag, setFullAreaDrag] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
-  const dragCounterRef = useRef(0)
 
   const isPending = activeCount > 0
 
@@ -142,39 +147,27 @@ export default function UploadClient({ projects, myProjects, initialSessions }: 
     )
   }
 
-  // 전체 영역 드래그앤드롭
-  const onDragEnter = (e: React.DragEvent) => {
-    e.preventDefault()
-    dragCounterRef.current += 1
-    if (e.dataTransfer.types.includes('Files')) setFullAreaDrag(true)
-  }
-  const onDragLeave = () => {
-    dragCounterRef.current -= 1
-    if (dragCounterRef.current === 0) setFullAreaDrag(false)
-  }
-  const onDragOver = (e: React.DragEvent) => e.preventDefault()
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    dragCounterRef.current = 0
-    setFullAreaDrag(false)
-    const files = Array.from(e.dataTransfer.files)
-      .filter((f) => ALLOWED_TYPES.includes(f.type))
-      .slice(0, 5)
-    if (files.length > 0) handleUploads(files)
-  }
+  // 전체 영역 드래그앤드롭 (react-dropzone)
+  const { getRootProps, isDragActive } = useDropzone({
+    accept: ACCEPTED_MIME_TYPES,
+    maxFiles: 5,
+    maxSize: 15 * 1024 * 1024,
+    noClick: true,
+    noKeyboard: true,
+    onDrop: (acceptedFiles) => {
+      if (acceptedFiles.length > 0) handleUploads(acceptedFiles)
+    },
+  })
 
   return (
     <div className="flex h-full" style={{ height: 'calc(100vh - 0px)' }}>
       <SessionSidebar sessions={sessions} />
 
       <div
-        className="flex-1 flex flex-col min-w-0 relative"
-        onDragEnter={onDragEnter}
-        onDragLeave={onDragLeave}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        {...getRootProps()}
+        className="flex-1 flex flex-col min-w-0 relative focus:outline-none"
       >
-        {fullAreaDrag && (
+        {isDragActive && (
           <div className="absolute inset-0 z-20 bg-primary/10 border-2 border-dashed border-primary/60 rounded-none flex flex-col items-center justify-center pointer-events-none">
             <span className="text-5xl mb-3">📎</span>
             <p className="text-primary text-lg font-semibold">파일을 여기에 놓으세요</p>

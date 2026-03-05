@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { BUDGET_CATEGORIES } from '@/lib/budget-categories'
 
 interface Props {
@@ -9,17 +10,27 @@ interface Props {
 }
 
 export default function CategorySelect({ value, onChange, placeholder = '카테고리 선택' }: Props) {
-  const isCustom = value !== '' && !BUDGET_CATEGORIES.includes(value as never)
-  const selectValue = isCustom ? '__custom__' : value
+  const [isCustomMode, setIsCustomMode] = useState(() => {
+    return value !== '' && !BUDGET_CATEGORIES.includes(value as never)
+  })
+
+  const selectValue = isCustomMode ? '__custom__' : value
+
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (e.target.value === '__custom__') {
+      setIsCustomMode(true)
+      onChange('')
+    } else {
+      setIsCustomMode(false)
+      onChange(e.target.value)
+    }
+  }
 
   return (
     <div className="flex gap-1.5">
       <select
         value={selectValue}
-        onChange={(e) => {
-          if (e.target.value === '__custom__') onChange('')
-          else onChange(e.target.value)
-        }}
+        onChange={handleSelectChange}
         className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary/50"
       >
         <option value="">{placeholder}</option>
@@ -28,13 +39,13 @@ export default function CategorySelect({ value, onChange, placeholder = '카테�
         ))}
         <option value="__custom__">직접 입력...</option>
       </select>
-      {(selectValue === '__custom__' || isCustom) && (
+      {isCustomMode && (
         <input
           type="text"
-          value={isCustom ? value : ''}
+          value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="직접 입력"
-          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm w-24 focus:outline-none focus:border-primary/50"
+          className="bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm w-32 focus:outline-none focus:border-primary/50"
         />
       )}
     </div>

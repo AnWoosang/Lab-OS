@@ -1,14 +1,21 @@
 'use client'
 
-import { useState } from 'react'
-import { X, Sparkles, AlertTriangle, Zap, BarChart2, GitBranch, CheckCircle2 } from 'lucide-react'
+import { Sparkles, AlertTriangle, Zap, BarChart2, GitBranch, CheckCircle2 } from 'lucide-react'
+import {
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogCloseButton,
+} from '@/app/components/ui/dialog'
+import { StatusBadge } from './StatusBadge'
 
 interface ReportData {
   projectCode: string
   projectName: string | null
   reportDate: string | null
   createdAt: string
-  progress: number | null
   bottleneck: string | null
   nextPlan: string | null
   aiAnalysis: string | null
@@ -117,121 +124,78 @@ function SectionCards({ text }: { text: string }) {
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export default function ReportSummaryModal({ report }: Props) {
-  const [open, setOpen] = useState(false)
-
-  const riskColor =
-    report.progress === null ? null :
-    report.progress < 65 ? 'red' :
-    report.progress < 80 ? 'amber' : 'green'
-
-  const riskLabel =
-    riskColor === 'red' ? 'Red Zone' :
-    riskColor === 'amber' ? 'Warning' : 'On Track'
-
-  const riskClass =
-    riskColor === 'red' ? 'bg-red-500/20 text-red-400 border-red-500/30' :
-    riskColor === 'amber' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
-    'bg-green-500/20 text-green-400 border-green-500/30'
-
-  const barColor =
-    riskColor === 'red' ? 'bg-red-400' :
-    riskColor === 'amber' ? 'bg-amber-400' : 'bg-green-400'
+  const status = report.bottleneck ? 'warning' : null
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-1 text-primary/60 hover:text-primary text-xs transition-colors"
-      >
-        <Sparkles className="w-3 h-3" />
-        상세 요약 보기
-      </button>
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1 text-primary/60 hover:text-primary text-xs transition-colors"
+        >
+          <Sparkles className="w-3 h-3" />
+          상세 요약 보기
+        </button>
+      </DialogTrigger>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setOpen(false)} />
+      <DialogContent>
+        {/* Header */}
+        <DialogHeader>
+          <div>
+            <DialogTitle>{report.projectCode}</DialogTitle>
+            {report.projectName && (
+              <p className="text-white/50 text-xs mt-0.5">{report.projectName}</p>
+            )}
+          </div>
+          <div className="flex items-center gap-3 ml-4">
+            <span className="text-white/40 text-xs font-mono whitespace-nowrap">
+              {report.reportDate ?? report.createdAt.slice(0, 10)}
+            </span>
+            <DialogCloseButton />
+          </div>
+        </DialogHeader>
 
-          <div className="relative bg-deep-navy-light border border-white/10 rounded-2xl w-full max-w-xl max-h-[85vh] overflow-y-auto shadow-2xl">
-            {/* Header */}
-            <div className="flex items-start justify-between px-6 py-4 border-b border-white/10 sticky top-0 bg-deep-navy-light rounded-t-2xl">
-              <div>
-                <p className="text-white font-semibold text-base">{report.projectCode}</p>
-                {report.projectName && (
-                  <p className="text-white/50 text-xs mt-0.5">{report.projectName}</p>
-                )}
-              </div>
-              <div className="flex items-center gap-3 ml-4">
-                <span className="text-white/40 text-xs font-mono whitespace-nowrap">
-                  {report.reportDate ?? report.createdAt.slice(0, 10)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors flex-shrink-0"
-                >
-                  <X className="w-4 h-4 text-white/60" />
-                </button>
+        {/* Body */}
+        <div className="px-6 py-5 space-y-5">
+          {status && (
+            <div className="flex justify-end">
+              <StatusBadge status={status} />
+            </div>
+          )}
+
+          {/* Next Plan */}
+          {report.nextPlan && (
+            <div>
+              <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-2">다음 계획</p>
+              <p className="text-white/80 text-sm leading-relaxed bg-white/5 rounded-lg p-4">{report.nextPlan}</p>
+            </div>
+          )}
+
+          {/* Bottleneck */}
+          {report.bottleneck && (
+            <div>
+              <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-2">병목 사항</p>
+              <div className="flex items-start gap-2.5 bg-amber-500/5 border border-amber-500/20 rounded-lg p-4">
+                <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                <p className="text-amber-200/80 text-sm leading-relaxed">{report.bottleneck}</p>
               </div>
             </div>
+          )}
 
-            {/* Body */}
-            <div className="px-6 py-5 space-y-5">
-              {/* Progress + Risk */}
-              {report.progress !== null && (
-                <div className="flex items-center gap-4">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-white/40 text-xs">진도율</span>
-                      <span className="text-white font-mono text-sm font-medium">{report.progress}%</span>
-                    </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${barColor}`} style={{ width: `${report.progress}%` }} />
-                    </div>
-                  </div>
-                  {riskColor && (
-                    <span className={`px-2.5 py-1 text-xs font-semibold rounded-full border flex-shrink-0 ${riskClass}`}>
-                      {riskLabel}
-                    </span>
-                  )}
+          {/* AI 상세 분석 */}
+          <div>
+            <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-3">AI 상세 분석</p>
+            {report.aiAnalysis
+              ? <SectionCards text={report.aiAnalysis} />
+              : (
+                <div className="text-white/25 text-xs text-center py-6 bg-white/3 rounded-lg border border-white/5">
+                  분석 데이터가 없습니다.
                 </div>
-              )}
-
-              {/* Next Plan */}
-              {report.nextPlan && (
-                <div>
-                  <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-2">다음 계획</p>
-                  <p className="text-white/80 text-sm leading-relaxed bg-white/5 rounded-lg p-4">{report.nextPlan}</p>
-                </div>
-              )}
-
-              {/* Bottleneck */}
-              {report.bottleneck && (
-                <div>
-                  <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-2">병목 사항</p>
-                  <div className="flex items-start gap-2.5 bg-amber-500/5 border border-amber-500/20 rounded-lg p-4">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-amber-200/80 text-sm leading-relaxed">{report.bottleneck}</p>
-                  </div>
-                </div>
-              )}
-
-              {/* AI 상세 분석 */}
-              <div>
-                <p className="text-white/40 text-xs font-medium uppercase tracking-wide mb-3">AI 상세 분석</p>
-                {report.aiAnalysis
-                  ? <SectionCards text={report.aiAnalysis} />
-                  : (
-                    <div className="text-white/25 text-xs text-center py-6 bg-white/3 rounded-lg border border-white/5">
-                      분석 데이터가 없습니다.
-                    </div>
-                  )
-                }
-              </div>
-            </div>
+              )
+            }
           </div>
         </div>
-      )}
-    </>
+      </DialogContent>
+    </Dialog>
   )
 }

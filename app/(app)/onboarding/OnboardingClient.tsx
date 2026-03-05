@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useState, FormEvent, startTransition } from 'react'
 import {
   FlaskConical,
   GraduationCap,
@@ -24,6 +24,7 @@ export default function OnboardingClient() {
     professorOnboardAction,
     initialState
   )
+  const [labNameError, setLabNameError] = useState<string | null>(null)
 
   const appUrl =
     typeof window !== 'undefined'
@@ -148,16 +149,32 @@ export default function OnboardingClient() {
             </div>
           </div>
 
-          <form action={profAction} className="space-y-4">
+          <form
+            onSubmit={(e: FormEvent<HTMLFormElement>) => {
+              e.preventDefault()
+              const fd = new FormData(e.currentTarget)
+              const labName = (fd.get('labName') as string).trim()
+              if (labName.length < 2) {
+                setLabNameError('연구실명을 2자 이상 입력해주세요.')
+                return
+              }
+              setLabNameError(null)
+              startTransition(() => profAction(fd))
+            }}
+            className="space-y-4"
+          >
             <div>
               <label className="block text-white/60 text-sm mb-1.5">연구실명</label>
               <input
                 type="text"
                 name="labName"
                 placeholder="예: 김철수 연구실"
+                onChange={() => setLabNameError(null)}
                 className="w-full bg-deep-navy border border-white/10 rounded-xl px-4 py-3 text-white placeholder-white/20 text-sm focus:outline-none focus:border-primary/50 transition-colors"
-                required
               />
+              {labNameError && (
+                <p className="text-red-400 text-xs mt-1">{labNameError}</p>
+              )}
             </div>
 
             {profState.error && (

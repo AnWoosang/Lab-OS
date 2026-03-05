@@ -1,11 +1,11 @@
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ArrowLeft } from 'lucide-react'
-import { getCurrentUserWithProfile } from '@/lib/auth'
-import { getProjectById, getProjectMembers, getApprovedStudents, getBudgetSummary } from '@/lib/db'
+import { getWorkspaceContext } from '@/lib/workspace-context'
+import { getProjectById, getProjectMembers, getApprovedStudents, getBudgetSummary, getExpensesForProject } from '@/lib/db'
 import CardLast4Form from './CardLast4Form'
 import MembersForm from './MembersForm'
-import { StatusDot } from '../../components/StatusBadge'
+import BudgetCategoryRow from '../../components/BudgetCategoryRow'
 
 interface Props {
   params: Promise<{ id: string }>
@@ -26,15 +26,21 @@ function StatCard({ title, value, colorClass }: {
 
 export default async function ProjectDetailPage({ params }: Props) {
   const { id } = await params
-  const { profile } = await getCurrentUserWithProfile()
-  if (!profile?.workspaceId) redirect('/onboarding')
+  const { workspaceId, profile } = await getWorkspaceContext()
 
-  const [project, members, students, budgetSummary] = await Promise.all([
-    getProjectById(id, profile.workspaceId),
-    getProjectMembers(id, profile.workspaceId),
-    getApprovedStudents(profile.workspaceId),
-    getBudgetSummary(id, profile.workspaceId),
+  const [project, members, students, budgetSummary, expenses] = await Promise.all([
+    getProjectById(id, workspaceId),
+    getProjectMembers(id, workspaceId),
+    getApprovedStudents(workspaceId),
+    getBudgetSummary(id, workspaceId),
+    getExpensesForProject(id, workspaceId),
   ])
+
+  const expensesByCategory = expenses.reduce<Record<string, typeof expenses>>((acc, e) => {
+    const key = e.budgetCategory ?? '미분류'
+    acc[key] = [...(acc[key] ?? []), e]
+    return acc
+  }, {})
 
   if (!project) notFound()
 
@@ -59,7 +65,6 @@ export default async function ProjectDetailPage({ params }: Props) {
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 flex-wrap mb-4">
-          <StatusDot status={project.status} />
           <span className="text-white/40 font-mono text-sm">{project.projectCode}</span>
           <h1 className="text-2xl font-bold text-white">
             {project.projectName ?? project.projectCode}
@@ -70,22 +75,11 @@ export default async function ProjectDetailPage({ params }: Props) {
         </div>
 
         {/* Stat cards */}
-        <div className="grid grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <StatCard
             title="예산 사용률"
             value={budgetPct != null ? `${budgetPct}%` : '—'}
             colorClass={budgetPct != null && budgetPct > 80 ? 'text-red-400' : 'text-green-400'}
-          />
-          <StatCard
-            title="위험도"
-            value={project.riskScore != null ? String(project.riskScore) : '—'}
-            colorClass={
-              project.riskScore != null && project.riskScore >= 70
-                ? 'text-red-400'
-                : project.riskScore != null && project.riskScore >= 40
-                ? 'text-amber-400'
-                : undefined
-            }
           />
           <StatCard title="종료일" value={project.endDate ?? '—'} />
         </div>
@@ -93,16 +87,9 @@ export default async function ProjectDetailPage({ params }: Props) {
 
       {/* 2-column body */}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6 items-start">
-        {/* Left: bottleneck + budget */}
+        {/* Left: budget */}
         <div className="space-y-6">
-          {project.bottleneck && (
-            <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-5 py-4">
-              <p className="text-red-400 text-xs font-medium mb-1">현재 병목</p>
-              <p className="text-white/80 text-sm">{project.bottleneck}</p>
-            </div>
-          )}
-
-          {project.budgetTotal != null && (
+          {(project.budgetTotal != null || budgetSummary.length > 0) && (
             <div className="bg-deep-navy-light rounded-xl border border-white/10 overflow-hidden">
               <div className="px-5 py-4 border-b border-white/10">
                 <h2 className="text-white font-semibold">예산 현황</h2>
@@ -111,43 +98,13 @@ export default async function ProjectDetailPage({ params }: Props) {
                 {budgetSummary.length === 0 && (
                   <div className="px-5 py-6 text-center text-white/30 text-sm">예산 항목 미설정</div>
                 )}
-                {budgetSummary.map((item) => {
-                  const pct = item.allocatedAmount > 0
-                    ? Math.round((item.usedAmount / item.allocatedAmount) * 100)
-                    : 0
-                  return (
-                    <div key={item.category} className="px-5 py-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-white text-sm font-medium">{item.category}</span>
-                        <span className={`text-xs font-mono font-semibold ${pct > 80 ? 'text-red-400' : pct > 50 ? 'text-amber-400' : 'text-green-400'}`}>
-                          {pct}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-white/10 rounded-full h-1.5 mb-2">
-                        <div
-                          className={`h-1.5 rounded-full transition-all ${pct > 80 ? 'bg-red-400' : pct > 50 ? 'bg-amber-400' : 'bg-green-400'}`}
-                          style={{ width: `${Math.min(pct, 100)}%` }}
-                        />
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-xs text-white/40">
-                        <div>
-                          <p className="mb-0.5">배정</p>
-                          <p className="text-white/70 font-mono">{item.allocatedAmount.toLocaleString()}원</p>
-                        </div>
-                        <div>
-                          <p className="mb-0.5">사용</p>
-                          <p className="text-white/70 font-mono">{item.usedAmount.toLocaleString()}원</p>
-                        </div>
-                        <div>
-                          <p className="mb-0.5">잔여</p>
-                          <p className={`font-mono ${item.remaining < 0 ? 'text-red-400' : 'text-white/70'}`}>
-                            {item.remaining.toLocaleString()}원
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+                {budgetSummary.map((item) => (
+                  <BudgetCategoryRow
+                    key={item.category}
+                    item={item}
+                    expenses={expensesByCategory[item.category] ?? []}
+                  />
+                ))}
                 {budgetSummary.length > 1 && (() => {
                   const totalAllocated = budgetSummary.reduce((s, b) => s + b.allocatedAmount, 0)
                   const totalUsed = budgetSummary.reduce((s, b) => s + b.usedAmount, 0)
@@ -189,7 +146,7 @@ export default async function ProjectDetailPage({ params }: Props) {
               </p>
               <CardLast4Form
                 projectId={id}
-                workspaceId={profile.workspaceId}
+                workspaceId={workspaceId}
                 currentCardLast4={project.cardLast4}
               />
             </div>

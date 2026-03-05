@@ -1,6 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
+import { Tabs, TabsList, TabsTrigger } from '@/app/components/ui/tabs'
 
 interface Props {
   currentTab: string
@@ -17,21 +18,18 @@ export default function LabTabs({ currentTab }: Props) {
   const router = useRouter()
 
   return (
-    <nav className="flex flex-col gap-1 w-44 flex-shrink-0">
-      {TABS.map((tab) => (
-        <button
-          key={tab.value}
-          type="button"
-          onClick={() => router.push(`/lab?tab=${tab.value}`)}
-          className={`text-left px-4 py-2.5 rounded-xl text-sm font-medium transition-all border-l-2 ${
-            currentTab === tab.value
-              ? 'bg-primary/10 text-primary border-primary'
-              : 'text-white/50 hover:text-white/80 hover:bg-white/5 border-transparent'
-          }`}
-        >
-          {tab.label}
-        </button>
-      ))}
-    </nav>
+    <Tabs value={currentTab} onValueChange={(value) => router.push(`/lab?tab=${value}`)}>
+      <TabsList className="flex-col items-stretch w-44 gap-1">
+        {TABS.map((tab) => (
+          <TabsTrigger
+            key={tab.value}
+            value={tab.value}
+            className="text-left justify-start px-4 py-2.5 rounded-xl text-sm font-medium border-l-2 border-x-0 border-t-0 border-b-0 border-transparent hover:text-white/80 hover:bg-white/5 data-[state=active]:bg-primary/10 data-[state=active]:text-primary data-[state=active]:border-primary data-[state=active]:border-x-0 data-[state=active]:border-t-0 data-[state=active]:border-b-0 data-[state=active]:border-l-2"
+          >
+            {tab.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+    </Tabs>
   )
 }

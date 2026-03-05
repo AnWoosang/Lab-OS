@@ -1,24 +1,16 @@
 'use server'
 
 import { getWorkspaceContext } from '@/lib/workspace-context'
-import { getAllProjects } from '@/lib/db'
-import { summarizeProjects, summarizeProjectRow } from '@/lib/gemini'
+import { getBudgetSummary, getExpensesForProject, type BudgetSummaryItem, type ExpenseRow } from '@/lib/db'
 
-export async function generateProjectSummaryAction(): Promise<string> {
+export async function getBudgetDetailAction(projectId: string): Promise<{
+  budgetSummary: BudgetSummaryItem[]
+  expenses: ExpenseRow[]
+}> {
   const { workspaceId } = await getWorkspaceContext()
-  const projects = await getAllProjects(workspaceId)
-  return summarizeProjects(projects)
-}
-
-export async function generateProjectRowSummaryAction(project: {
-  projectCode: string
-  projectName: string | null
-  status: string
-  bottleneck: string | null
-  riskScore: number | null
-  budgetTotal: number | null
-  budgetUsed: number | null
-}): Promise<string> {
-  await getWorkspaceContext() // auth check
-  return summarizeProjectRow(project)
+  const [budgetSummary, expenses] = await Promise.all([
+    getBudgetSummary(projectId, workspaceId),
+    getExpensesForProject(projectId, workspaceId),
+  ])
+  return { budgetSummary, expenses }
 }

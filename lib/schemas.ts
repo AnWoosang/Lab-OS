@@ -9,8 +9,6 @@ export const ReportSchema = z.object({
   report_date: z.string().nullable(),       // "YYYY-MM-DD"
   week_label: z.string().nullable(),         // 예: "2025년 2월 3주차"
   summary: z.string(),
-  progress: z.number().min(0).max(100).nullable(),
-  progress_estimated: z.boolean(),
   bottleneck: z.string().nullable(),
   next_plan: z.string().nullable(),
   risk_score: z.enum(['red', 'yellow', 'green']),

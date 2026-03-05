@@ -1,4 +1,5 @@
 import { FileText, ExternalLink } from 'lucide-react'
+import { EmptyState } from '../components/EmptyState'
 import { getWorkspaceContext } from '@/lib/workspace-context'
 import {
   getAllProjects,
@@ -14,8 +15,7 @@ import DateRangePicker from '../components/DateRangePicker'
 import ExpandableText from '../components/ExpandableText'
 import SortableDateHeader from '../components/SortableDateHeader'
 import ReportSummaryModal from '../components/ReportSummaryModal'
-import { StatusDot, progressToStatus } from '../components/StatusBadge'
-import { ProgressBar } from '../components/ProgressBar'
+import { StatusDot } from '../components/StatusBadge'
 import DeleteRowButton from '../components/DeleteRowButton'
 import { deleteReportAction } from './actions'
 
@@ -48,10 +48,7 @@ export default async function ReportsPage({
 
   const selectedProject = projectId ? projects.find((p) => p.id === projectId) : null
 
-  // 날짜 정렬 중이 아니면 위험도순 정렬
-  const riskOrder = (r: ReportWithProject) =>
-    r.progress === null ? 1 : r.progress < 65 ? 0 : r.progress < 80 ? 1 : 2
-  const sorted = order ? reports : [...reports].sort((a, b) => riskOrder(a) - riskOrder(b))
+  const sorted = reports
 
   const headingText = selectedProject
     ? `${selectedProject.projectCode} 보고서`
@@ -85,13 +82,7 @@ export default async function ReportsPage({
       </div>
 
       {reports.length === 0 ? (
-        <div className="bg-deep-navy-light rounded-xl border border-white/10 p-16 text-center">
-          <div className="w-14 h-14 bg-white/5 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <FileText className="w-7 h-7 text-white/20" />
-          </div>
-          <p className="text-white/40 text-sm">아직 등록된 보고서가 없습니다.</p>
-          <p className="text-white/25 text-xs mt-1">학생이 보고서를 업로드하면 여기에 표시됩니다.</p>
-        </div>
+        <EmptyState icon={FileText} message="아직 등록된 보고서가 없습니다." sub="학생이 보고서를 업로드하면 여기에 표시됩니다." />
       ) : (
         <div className="bg-deep-navy-light rounded-xl border border-white/10 overflow-hidden">
           <div className="overflow-x-auto">
@@ -103,8 +94,7 @@ export default async function ReportsPage({
                   </th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[160px]">프로젝트</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[100px]">작성자</th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[130px]">진도율</th>
-                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[110px]">위험도</th>
+                  <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[80px]">상태</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium">AI 요약</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[160px]">병목</th>
                   <th className="text-left px-5 py-3 text-white/40 text-xs font-medium w-[60px]">파일</th>
@@ -133,13 +123,11 @@ export default async function ReportsPage({
                     <td className="px-5 py-4 w-[100px]">
                       <span className="text-white/60 text-xs">{report.studentName ?? '—'}</span>
                     </td>
-                    <td className="px-5 py-4 w-[130px]">
-                      <ProgressBar value={report.progress} />
-                    </td>
-                    <td className="px-5 py-4 w-[110px]">
-                      {report.progress !== null && (
-                        <StatusDot status={progressToStatus(report.progress)} />
-                      )}
+                    <td className="px-5 py-4 w-[80px]">
+                      {report.bottleneck !== null
+                        ? <StatusDot status="warning" />
+                        : <span className="text-white/20 text-sm">—</span>
+                      }
                     </td>
                     <td className="px-5 py-4 max-w-[260px]">
                       {(report.content || report.aiAnalysis)
@@ -154,7 +142,6 @@ export default async function ReportsPage({
                                 projectName: report.projectName,
                                 reportDate: report.reportDate,
                                 createdAt: report.createdAt,
-                                progress: report.progress,
                                 bottleneck: report.bottleneck,
                                 nextPlan: report.nextPlan,
                                 aiAnalysis: report.aiAnalysis,

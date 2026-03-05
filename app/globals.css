@@ -21,3 +21,8 @@ body {
 .animate-fadeIn {
   animation: fadeIn 0.2s ease-out;
 }
+
+select option {
+  background-color: #1A2B45;
+  color: white;
+}

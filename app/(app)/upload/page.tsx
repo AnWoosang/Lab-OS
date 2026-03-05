@@ -1,23 +1,19 @@
-import { redirect } from 'next/navigation'
-import { getCurrentUserWithProfile } from '@/lib/auth'
+import { getWorkspaceContext } from '@/lib/workspace-context'
 import { getAllProjects, getProjectsByUserId, getUploadSessionsForUser } from '@/lib/db'
 import UploadClient from './components/UploadClient'
 
 export default async function UploadPage() {
-  const { authUser, profile } = await getCurrentUserWithProfile()
-
-  if (!authUser || !profile) redirect('/login')
-  if (!profile.workspaceId) redirect('/onboarding')
+  const { user, workspaceId } = await getWorkspaceContext()
 
   const [projects, myProjects, sessions] = await Promise.all([
-    getAllProjects(profile.workspaceId),
-    getProjectsByUserId(authUser.id, profile.workspaceId),
-    getUploadSessionsForUser(authUser.id, profile.workspaceId),
+    getAllProjects(workspaceId),
+    getProjectsByUserId(user.id, workspaceId),
+    getUploadSessionsForUser(user.id, workspaceId),
   ])
 
   return (
     <UploadClient
-      workspaceId={profile.workspaceId}
+      workspaceId={workspaceId}
       projects={projects}
       myProjects={myProjects}
       initialSessions={sessions}

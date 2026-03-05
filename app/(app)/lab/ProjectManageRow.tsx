@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef, useActionState } from 'react'
+import { useState, useEffect, useRef, useActionState, FormEvent, startTransition } from 'react'
 import { Pencil, Trash2, Check, X, Plus, Loader2 } from 'lucide-react'
-import { updateProjectMetaAction, deleteProjectAction, toggleProjectCompletedAction, getProjectBudgetsAction } from './actions'
+import { updateProjectMetaAction, deleteProjectAction, toggleProjectCompletedAction, getProjectBudgetsAction, getProjectFreeLeadsAction } from './actions'
 import CategorySelect from '@/app/(app)/components/CategorySelect'
-import { StatusDot } from '@/app/(app)/components/StatusBadge'
+import { BudgetBar } from '@/app/(app)/components/BudgetBar'
+import BudgetDetailModal from '@/app/(app)/components/BudgetDetailModal'
 import type { ProjectRow } from '@/lib/db'
 import type { UserProfile } from '@/lib/supabase'
 
@@ -20,10 +21,9 @@ interface BudgetItem {
   amount: string
 }
 
-
-function fmtKRW(n: number): string {
-  if (Math.abs(n) >= 10000) return `${Math.round(n / 10000).toLocaleString()}만원`
-  return `${n.toLocaleString()}원`
+const formatAmount = (val: string) => {
+  const digits = val.replace(/[^0-9]/g, '')
+  return digits ? Number(digits).toLocaleString() : ''
 }
 
 export default function ProjectManageRow({ project, workspaceId: _workspaceId, approvedStudents, leads }: Props) {
@@ -32,6 +32,9 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([])
   const [selectedLeads, setSelectedLeads] = useState<UserProfile[]>([])
+  const [freeTextLeads, setFreeTextLeads] = useState<string[]>([])
+  const [freeLeadInput, setFreeLeadInput] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const formRef = useRef<HTMLFormElement>(null)
 
   const [editState, editAction, editPending] = useActionState(updateProjectMetaAction, null)
@@ -43,41 +46,19 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
   const handleEditClick = async () => {
     setLoadingEdit(true)
     try {
-      const existing = await getProjectBudgetsAction(project.id)
+      const [existing, freeLeads] = await Promise.all([
+        getProjectBudgetsAction(project.id),
+        getProjectFreeLeadsAction(project.id),
+      ])
       setBudgetItems(
         existing.map((b) => ({ category: b.category, amount: String(b.allocatedAmount) }))
       )
       setSelectedLeads(leads)
+      setFreeTextLeads(freeLeads)
     } finally {
       setLoadingEdit(false)
       setIsEditing(true)
     }
-  }
-
-  const handleSubmit = () => {
-    // Inject budget_items hidden input
-    const existingBudget = formRef.current?.querySelector('input[name="budget_items"]')
-    if (existingBudget) existingBudget.remove()
-    const valid = budgetItems.filter((b) => b.category.trim() && b.amount.trim())
-    const budgetInput = document.createElement('input')
-    budgetInput.type = 'hidden'
-    budgetInput.name = 'budget_items'
-    budgetInput.value = JSON.stringify(
-      valid.map((b) => ({
-        category: b.category.trim(),
-        allocatedAmount: parseInt(b.amount.replace(/,/g, ''), 10) || 0,
-      }))
-    )
-    formRef.current?.appendChild(budgetInput)
-
-    // Inject lead_user_ids hidden input
-    const existingLeads = formRef.current?.querySelector('input[name="lead_user_ids"]')
-    if (existingLeads) existingLeads.remove()
-    const leadsInput = document.createElement('input')
-    leadsInput.type = 'hidden'
-    leadsInput.name = 'lead_user_ids'
-    leadsInput.value = JSON.stringify(selectedLeads.map((l) => l.id))
-    formRef.current?.appendChild(leadsInput)
   }
 
   const addBudgetItem = () => setBudgetItems((prev) => [...prev, { category: '', amount: '' }])
@@ -92,24 +73,80 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
 
   const remaining = approvedStudents.filter((s) => !selectedLeads.find((l) => l.id === s.id))
 
+  const budgetItemsForServer = budgetItems
+    .filter((b) => b.category.trim() && b.amount.trim())
+    .map((b) => ({
+      category: b.category.trim(),
+      allocatedAmount: parseInt(b.amount.replace(/,/g, ''), 10) || 0,
+    }))
+
+  const clearError = (key: string) =>
+    setFieldErrors((prev) => { const next = { ...prev }; delete next[key]; return next })
+
+  const handleAddFreeLead = () => {
+    const trimmed = freeLeadInput.trim()
+    if (trimmed) {
+      setFreeTextLeads((prev) => [...prev, trimmed])
+      setFreeLeadInput('')
+    }
+  }
+
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    const fd = new FormData(e.currentTarget)
+    const errors: Record<string, string> = {}
+
+    const code = (fd.get('projectCode') as string).trim()
+    if (!code) errors.projectCode = '과제코드를 입력해주세요.'
+    else if (!/^[A-Za-z0-9\-_]+$/.test(code)) errors.projectCode = '영문, 숫자, 하이픈(-)만 사용할 수 있습니다.'
+
+    const card = (fd.get('cardLast4') as string).trim()
+    if (card && !/^\d{4}$/.test(card)) errors.cardLast4 = '카드 번호는 숫자 4자리여야 합니다.'
+
+    const start = fd.get('startDate') as string
+    const end = fd.get('endDate') as string
+    if (start && end && start > end) errors.endDate = '종료일은 시작일 이후여야 합니다.'
+
+    budgetItems.forEach((item, idx) => {
+      if (item.category && !item.amount.trim()) errors[`budget_amount_${idx}`] = '금액을 입력해주세요.'
+      if (!item.category && item.amount.trim()) errors[`budget_category_${idx}`] = '카테고리를 선택해주세요.'
+    })
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors)
+      return
+    }
+    setFieldErrors({})
+    startTransition(() => editAction(fd))
+  }
+
   if (isEditing) {
     return (
       <tr className="border-b border-white/5 bg-white/3">
-        <td colSpan={7} className="px-5 py-4">
-          <form ref={formRef} action={editAction} onSubmit={handleSubmit} className="space-y-3">
+        <td colSpan={6} className="px-5 py-4">
+          <form ref={formRef} onSubmit={handleSubmit} className="space-y-3">
             <input type="hidden" name="projectId" value={project.id} />
+            {/* JSX hidden inputs */}
+            <input type="hidden" name="budget_items" value={JSON.stringify(budgetItemsForServer)} />
+            <input type="hidden" name="lead_user_ids" value={JSON.stringify(selectedLeads.map((l) => l.id))} />
+            <input type="hidden" name="free_lead_names" value={JSON.stringify(freeTextLeads)} />
 
             {/* Row 1: 과제코드 + 프로젝트명 */}
             <div className="flex flex-wrap gap-2">
-              <input
-                type="text"
-                name="projectCode"
-                defaultValue={project.projectCode}
-                placeholder="과제코드"
-                maxLength={50}
-                required
-                className="w-32 bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-primary/50"
-              />
+              <div className="flex flex-col gap-0.5">
+                <input
+                  type="text"
+                  name="projectCode"
+                  defaultValue={project.projectCode}
+                  placeholder="과제코드"
+                  maxLength={50}
+                  onChange={() => clearError('projectCode')}
+                  className="w-32 bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-primary/50"
+                />
+                {fieldErrors.projectCode && (
+                  <span className="text-red-400 text-xs">{fieldErrors.projectCode}</span>
+                )}
+              </div>
               <input
                 type="text"
                 name="projectName"
@@ -121,35 +158,46 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
 
             {/* Row 2: 법인카드 */}
             <div className="flex flex-wrap gap-2">
-              <input
-                type="text"
-                name="cardLast4"
-                defaultValue={project.cardLast4 ?? ''}
-                placeholder="법인카드 끝 4자리"
-                maxLength={4}
-                pattern="\d{4}"
-                className="w-36 bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-primary/50"
-              />
+              <div className="flex flex-col gap-0.5">
+                <input
+                  type="text"
+                  name="cardLast4"
+                  defaultValue={project.cardLast4 ?? ''}
+                  placeholder="법인카드 끝 4자리"
+                  maxLength={4}
+                  onChange={() => clearError('cardLast4')}
+                  className="w-36 bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm font-mono focus:outline-none focus:border-primary/50"
+                />
+                {fieldErrors.cardLast4 && (
+                  <span className="text-red-400 text-xs">{fieldErrors.cardLast4}</span>
+                )}
+              </div>
             </div>
 
             {/* Row 3: 기간 */}
-            <div className="flex flex-wrap gap-2 items-center">
+            <div className="flex flex-wrap gap-2 items-start">
               <input
                 type="date"
                 name="startDate"
                 defaultValue={project.startDate ?? ''}
                 className="bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-primary/50 w-40"
               />
-              <span className="text-white/30 text-sm">~</span>
-              <input
-                type="date"
-                name="endDate"
-                defaultValue={project.endDate ?? ''}
-                className="bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-primary/50 w-40"
-              />
+              <span className="text-white/30 text-sm mt-1.5">~</span>
+              <div className="flex flex-col gap-0.5">
+                <input
+                  type="date"
+                  name="endDate"
+                  defaultValue={project.endDate ?? ''}
+                  onChange={() => clearError('endDate')}
+                  className="bg-white/5 border border-white/20 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none focus:border-primary/50 w-40"
+                />
+                {fieldErrors.endDate && (
+                  <span className="text-red-400 text-xs">{fieldErrors.endDate}</span>
+                )}
+              </div>
             </div>
 
-            {/* Row 4: 담당자 멀티셀렉트 */}
+            {/* Row 4: 담당자 */}
             <div>
               <span className="text-white/40 text-xs block mb-1.5">담당자</span>
               <div className="flex flex-wrap items-center gap-1.5">
@@ -168,6 +216,21 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
                     </button>
                   </span>
                 ))}
+                {freeTextLeads.map((name, i) => (
+                  <span
+                    key={`free-${i}`}
+                    className="flex items-center gap-1 px-2 py-0.5 bg-white/10 rounded-full text-white/80 text-xs"
+                  >
+                    {name}
+                    <button
+                      type="button"
+                      onClick={() => setFreeTextLeads((prev) => prev.filter((_, j) => j !== i))}
+                      className="text-white/40 hover:text-white/80"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
                 {remaining.length > 0 && (
                   <select
                     value=""
@@ -177,12 +240,32 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
                     }}
                     className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white/60 text-xs focus:outline-none"
                   >
-                    <option value="">+ 추가</option>
+                    <option value="">+ 학생 추가</option>
                     {remaining.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
                   </select>
                 )}
+              </div>
+              {/* 외부 담당자 자유 기입 */}
+              <div className="flex items-center gap-1.5 mt-1.5">
+                <input
+                  type="text"
+                  value={freeLeadInput}
+                  onChange={(e) => setFreeLeadInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); handleAddFreeLead() }
+                  }}
+                  placeholder="외부 담당자 이름"
+                  className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-white text-xs placeholder-white/20 focus:outline-none focus:border-primary/50 w-32"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddFreeLead}
+                  className="text-white/40 hover:text-white/70 text-xs transition-colors"
+                >
+                  추가
+                </button>
               </div>
             </div>
 
@@ -196,26 +279,40 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
               </div>
               <div className="space-y-1.5">
                 {budgetItems.map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <CategorySelect
-                      value={item.category}
-                      onChange={(val) => updateItem(idx, 'category', val)}
-                    />
-                    <input
-                      type="text"
-                      placeholder="금액"
-                      value={item.amount}
-                      onChange={(e) => updateItem(idx, 'amount', e.target.value)}
-                      className="w-32 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary/50"
-                    />
-                    <span className="text-white/30 text-sm">원</span>
-                    <button
-                      type="button"
-                      onClick={() => removeBudgetItem(idx)}
-                      className="text-white/30 hover:text-red-400 transition-colors"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
+                  <div key={idx} className="flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2">
+                      <CategorySelect
+                        value={item.category}
+                        onChange={(val) => {
+                          updateItem(idx, 'category', val)
+                          clearError(`budget_category_${idx}`)
+                        }}
+                      />
+                      <input
+                        type="text"
+                        placeholder="금액"
+                        value={item.amount}
+                        onChange={(e) => {
+                          updateItem(idx, 'amount', formatAmount(e.target.value))
+                          clearError(`budget_amount_${idx}`)
+                        }}
+                        className="w-32 bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white text-sm focus:outline-none focus:border-primary/50"
+                      />
+                      <span className="text-white/30 text-sm">원</span>
+                      <button
+                        type="button"
+                        onClick={() => removeBudgetItem(idx)}
+                        className="text-white/30 hover:text-red-400 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                    {fieldErrors[`budget_amount_${idx}`] && (
+                      <span className="text-red-400 text-xs ml-1">{fieldErrors[`budget_amount_${idx}`]}</span>
+                    )}
+                    {fieldErrors[`budget_category_${idx}`] && (
+                      <span className="text-red-400 text-xs ml-1">{fieldErrors[`budget_category_${idx}`]}</span>
+                    )}
                   </div>
                 ))}
                 <button
@@ -265,12 +362,6 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
         ? `${project.startDate} ~`
         : '—'
 
-  const budgetUsed = project.budgetUsed ?? 0
-  const budgetTotal = project.budgetTotal
-  const budgetPct = budgetTotal ? Math.min(Math.round((budgetUsed / budgetTotal) * 100), 100) : null
-  const budgetRemaining = budgetTotal != null ? budgetTotal - budgetUsed : null
-  const barColor = budgetPct == null ? '' : budgetPct > 80 ? 'bg-red-400' : budgetPct > 60 ? 'bg-amber-400' : 'bg-green-400'
-
   return (
     <tr className="border-b border-white/5 hover:bg-white/3 transition-colors">
       {/* 과제코드 */}
@@ -295,29 +386,8 @@ export default function ProjectManageRow({ project, workspaceId: _workspaceId, a
 
       {/* 예산 */}
       <td className="px-5 py-3">
-        {budgetTotal == null ? (
-          <span className="text-white/30 text-sm">—</span>
-        ) : (
-          <div className="space-y-1 min-w-[120px]">
-            <div className="flex items-center gap-2">
-              <div className="bg-white/10 rounded-full h-1 w-20 flex-shrink-0">
-                <div className={`h-full rounded-full ${barColor}`} style={{ width: `${budgetPct}%` }} />
-              </div>
-              <span className="text-white/50 text-xs font-mono">{budgetPct}%</span>
-            </div>
-            <p className="text-white/40 text-xs font-mono whitespace-nowrap">
-              {fmtKRW(budgetUsed)} / {fmtKRW(budgetTotal)}
-            </p>
-            <p className={`text-xs font-mono whitespace-nowrap ${budgetRemaining != null && budgetRemaining < 0 ? 'text-red-400' : 'text-white/30'}`}>
-              잔여 {budgetRemaining != null ? fmtKRW(budgetRemaining) : '—'}
-            </p>
-          </div>
-        )}
-      </td>
-
-      {/* 상태 */}
-      <td className="px-5 py-3">
-        <StatusDot status={project.status} />
+        <BudgetBar used={project.budgetUsed} total={project.budgetTotal} />
+        <BudgetDetailModal projectId={project.id} projectName={project.projectName} />
       </td>
 
       {/* 작업 */}

@@ -90,7 +90,7 @@ export async function parseReport(
     return {
       project_code: null, project_name: null, student_name: null,
       report_date: null, week_label: null, summary: '',
-      progress: null, progress_estimated: false, bottleneck: null,
+      bottleneck: null,
       next_plan: null, ai_analysis: null, risk_score: 'green', error_code: 'UNREADABLE_FILE',
     }
   }
@@ -101,7 +101,7 @@ export async function parseReport(
     return {
       project_code: null, project_name: null, student_name: null,
       report_date: null, week_label: null, summary: '',
-      progress: null, progress_estimated: false, bottleneck: null,
+      bottleneck: null,
       next_plan: null, ai_analysis: null, risk_score: 'green', error_code: 'UNREADABLE_FILE',
     }
   }
@@ -309,8 +309,6 @@ export async function processFile(
       report_date: null,
       week_label: null,
       summary: '',
-      progress: null,
-      progress_estimated: false,
       bottleneck: null,
       next_plan: null,
       ai_analysis: null,

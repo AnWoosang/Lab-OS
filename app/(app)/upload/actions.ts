@@ -127,6 +127,9 @@ export async function processUploadAction(
         return { ok: false, type, error: errMsg, sessionId }
       }
 
+      // 주간 보고서 작성자 = 업로드한 사람 (Gemini 추출값 무시)
+      reportData.student_name = profile.name ?? null
+
       await createReport(workspaceId, resolvedProjectId, reportData, storagePath, sessionId)
       await updateUploadSession(sessionId, { status: 'done', resultType: 'report', resultData: data as Record<string, unknown> })
       revalidatePath('/lab')
@@ -135,7 +138,7 @@ export async function processUploadAction(
       return {
         ok: true,
         type: 'report',
-        message: `보고서 분석 완료! 진도율: ${reportData.progress ?? '미확인'}% · 상태: ${
+        message: `보고서 분석 완료! 상태: ${
           reportData.risk_score === 'red' ? '🔴 Red Zone' :
           reportData.risk_score === 'yellow' ? '🟡 Warning' : '🟢 On Track'
         }${reportData.bottleneck ? `\n병목: ${reportData.bottleneck}` : ''}`,
